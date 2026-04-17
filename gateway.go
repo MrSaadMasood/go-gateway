@@ -1,5 +1,0 @@
-package gogateway
-
-func main() {
-
-}
