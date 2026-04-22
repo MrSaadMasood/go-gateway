@@ -1,5 +1,7 @@
 package services
 
+import "gateway/internal/config"
+
 type Storer interface {
-	Map(reqPath string) (Service, error)
+	Map(reqPath string) (config.ServiceConfig, error)
 }

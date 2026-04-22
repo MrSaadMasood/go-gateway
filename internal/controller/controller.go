@@ -1,11 +1,12 @@
 package controller
 
-type ControlOpts struct {
-	ShouldValidate        bool
-	ShouldEnforcePolicies bool
-	ShouldVersionControl  bool
+type AccessControllerOpts struct {
+	RestrictedServices []string
+	RestrictedPaths    []string
+	ServiceName        string
+	ReqPath            string
 }
 
 type ServiceAccessController interface {
-	Control(ControlOpts) error
+	Control(AccessControllerOpts) error
 }

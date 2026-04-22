@@ -1,8 +1,7 @@
 package protect
 
 type ServiceOptions struct {
-	ServiceName                string
-	ShouldMitigateBackpressure bool
+	ServiceName string
 }
 
 type ServiceProtector interface {

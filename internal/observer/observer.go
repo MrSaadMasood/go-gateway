@@ -4,7 +4,7 @@ import "time"
 
 type ServiceOptions struct {
 	ServiceName         string
-	HealthCheckInterval time.Time
+	HealthCheckInterval *time.Time
 }
 
 type ServiceObserver interface {

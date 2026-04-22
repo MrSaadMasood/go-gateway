@@ -10,7 +10,7 @@ func main() {
 	args := os.Args
 	fmt.Print(args[1])
 	if len(args) > 0 && args[1] == "read" {
-		readInternal("./internal/processor")
+		readInternal("./internal")
 		return
 	}
 

@@ -1,9 +1,10 @@
 package ratelimit
 
+import "gateway/internal/config"
+
 type RateLimitOpts struct {
-	GlobalLimits  int
-	ServiceLimits int
-	RouteLimits   int
+	GlobalRouteLimits int
+	config.ServiceRateLimitOpts
 }
 
 type RateLimiter interface {
