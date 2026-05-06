@@ -10,3 +10,9 @@ type RateLimitOpts struct {
 type RateLimiter interface {
 	Limit(RateLimitOpts) error
 }
+
+type ReqRateLimiter struct{}
+
+func (mrl ReqRateLimiter) Limit(RateLimitOpts) error {
+	return nil
+}

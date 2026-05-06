@@ -1,10 +1,16 @@
 package proxy
 
-type Request interface {
-	Write([]byte) (int, error)
-	WriteHeader(statusCode int)
+import (
+	"gateway/internal/config"
+	"net/http"
+)
+
+type Proxier interface {
+	Proxy(r *http.Request, ro config.ServiceRedirectOpts) (http.Response, error)
 }
 
-type ServiceProxier interface {
-	Proxy(Request) error
+type ReqProxy struct{}
+
+func (ReqProxy) Proxy(r *http.Request, ro config.ServiceRedirectOpts) (http.Response, error) {
+	return http.Response{}, nil
 }

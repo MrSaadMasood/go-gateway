@@ -10,3 +10,9 @@ type AccessControllerOpts struct {
 type ServiceAccessController interface {
 	Control(AccessControllerOpts) error
 }
+
+type ReqServiceAccessController struct{}
+
+func (msc ReqServiceAccessController) Control(AccessControllerOpts) error {
+	return nil
+}

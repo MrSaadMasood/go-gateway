@@ -2,6 +2,13 @@ package main
 
 import (
 	"fmt"
+	"gateway/internal/config"
+	"gateway/internal/controller"
+	"gateway/internal/proxy"
+	ratelimit "gateway/internal/rate-limit"
+	"gateway/internal/request"
+	"gateway/internal/services"
+	"gateway/internal/validate"
 	"os"
 	"path/filepath"
 )
@@ -13,6 +20,23 @@ func main() {
 		readInternal("./internal")
 		return
 	}
+
+	var configLoader config.Loader = config.NewMockConfigLoader()
+	var validator validate.Validator = validate.ReqValidator{}
+	var proxier proxy.Proxier = proxy.ReqProxy{}
+	var rateLimiter ratelimit.RateLimiter = ratelimit.ReqRateLimiter{}
+	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}
+
+	request.GetHandlerFunc(request.HandleRequestData{
+		ConfigLoader:            configLoader,
+		Validator:               validator,
+		RateLimiter:             rateLimiter,
+		ServiceAccessController: serviceAccessController,
+		Proxier:                 proxier,
+		GetService: func(scs []config.ServiceConfig) services.Storer {
+			return services.NewMockServiceStore(scs)
+		},
+	})
 
 }
 

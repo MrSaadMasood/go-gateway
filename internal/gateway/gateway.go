@@ -1,6 +1,13 @@
 package gateway
 
 type Gatewayer interface {
-	Start(port int) error
+	Start() error
 	Stop()
+}
+
+type Gateway struct {
+}
+
+func NewGateway() Gateway {
+	return Gateway{}
 }

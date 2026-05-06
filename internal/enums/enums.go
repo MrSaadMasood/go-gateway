@@ -16,6 +16,8 @@ type RequestStatus string
 
 const (
 	ReqInitialized       RequestStatus = "request_initialized"
+	ReqServiceMapSuccess RequestStatus = "request_service_map_success"
+	ReqServiceMapFailed  RequestStatus = "request_service_map_failed"
 	ReqValidationSuccess RequestStatus = "validation_success"
 	ReqValidationFailed  RequestStatus = "validation_failed"
 	ReqRateLimitSuccess  RequestStatus = "rate_limit_success"
@@ -27,50 +29,57 @@ const (
 	ReqTimeout           RequestStatus = "timeout"
 )
 
-var reqStatusMap = map[RequestStatus]RequestStatus{
-	ReqInitialized:       ReqValidationSuccess,
-	ReqValidationSuccess: ReqRateLimitSuccess,
-	ReqRateLimitSuccess:  ReqProxySuccess,
-	ReqProxySuccess:      ReqSuccess,
+var reqStatusMap = map[RequestStatus][]RequestStatus{
+	ReqInitialized:       {ReqServiceMapSuccess, ReqServiceMapFailed, ReqTimeout},
+	ReqServiceMapSuccess: {ReqValidationSuccess, ReqValidationFailed, ReqTimeout},
+	ReqValidationSuccess: {ReqRateLimitSuccess, ReqRateLimitFailed, ReqTimeout},
+	ReqRateLimitSuccess:  {ReqProxySuccess, ReqProxyFailed, ReqTimeout},
+	ReqProxySuccess:      {ReqSuccess, ReqFailed, ReqTimeout},
+	ReqServiceMapFailed:  {},
+	ReqValidationFailed:  {},
+	ReqRateLimitFailed:   {},
+	ReqProxyFailed:       {},
+	ReqSuccess:           {},
+	ReqFailed:            {},
+	ReqTimeout:           {},
 }
 
-var reqStatus1Map = map[RequestStatus][]RequestStatus{
-	ReqInitialized:       {ReqValidationSuccess, ReqValidationFailed},
-	ReqValidationSuccess: {ReqRateLimitSuccess, ReqRateLimitFailed},
-	ReqRateLimitSuccess:  {ReqProxySuccess, ReqProxyFailed},
-	ReqProxySuccess:      {ReqSuccess, ReqFailed},
-}
+var ErrReqTerminalState = errors.New("final state reached")
 
-var ErrTerminalState = errors.New("final state reached")
+func (*RequestStatus) Next(from RequestStatus, to RequestStatus) error {
 
-func (*RequestStatus) Next(from RequestStatus) (RequestStatus, error) {
-	if from == ReqSuccess || from == ReqFailed {
-		return "", ErrTerminalState
+	if from == to {
+		return errors.New("current and next states cannot be equal")
 	}
 
-	state, ok := reqStatusMap[from]
-	if !ok {
-		return "", errors.New("invlalid state provided")
-	}
-
-	return state, nil
-}
-
-func (*RequestStatus) NextState(from RequestStatus, to RequestStatus) error {
-
-	if from == ReqSuccess || from == ReqFailed {
-		return ErrTerminalState
-	}
-
-	states, ok := reqStatus1Map[from]
+	currStates, ok := reqStatusMap[from]
 	if !ok {
 		return errors.New("invalid state provided")
 	}
 
-	allowed := slices.Contains(states, to)
+	if len(currStates) == 0 || to == ReqInitialized {
+		return ErrReqTerminalState
+	}
+
+	allowed := slices.Contains(currStates, to)
 	if !allowed {
 		return errors.New("transition not allowed")
 	}
 
 	return nil
+}
+
+func (rs RequestStatus) IsTerminalState(s RequestStatus) bool {
+	terminalStates := make([]RequestStatus, 0)
+	for k, v := range reqStatusMap {
+		if len(v) == 0 {
+			terminalStates = append(terminalStates, k)
+		}
+	}
+
+	if slices.Contains(terminalStates, s) {
+		return true
+	}
+
+	return false
 }

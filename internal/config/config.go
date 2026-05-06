@@ -56,7 +56,7 @@ type ServiceDepricationOpts struct {
 type ServiceConfig struct {
 	ServiceName        string
 	ServiceUrl         string
-	Timeout            time.Time
+	Timeout            *time.Time
 	RateLimitOpts      *ServiceRateLimitOpts
 	ValidatorOpts      *ServiceValidatorOpts
 	RedirectOpts       *ServiceRedirectOpts
@@ -67,14 +67,34 @@ type ServiceConfig struct {
 
 type Config struct {
 	Port                     int
-	Timeout                  time.Time
+	Timeout                  time.Duration
 	RateLimit                int
 	ReqSizeLimit             int
 	Services                 []ServiceConfig
 	InternalOnlyServices     []string
 	InternalOnlyServicesUrls []string
 	BlockedIps               []string
-	HealthCheckInterval      time.Time
+	HealthCheckInterval      time.Duration
+}
+
+type ConfigLoader struct{}
+
+func (ml *ConfigLoader) Load() (Config, error) {
+	return Config{
+		Port:                     5000,
+		Timeout:                  10 * time.Second,
+		RateLimit:                30,
+		ReqSizeLimit:             5000,
+		Services:                 nil,
+		InternalOnlyServices:     nil,
+		InternalOnlyServicesUrls: nil,
+		BlockedIps:               nil,
+		HealthCheckInterval:      10 * time.Second,
+	}, nil
+}
+
+func NewMockConfigLoader() *ConfigLoader {
+	return &ConfigLoader{}
 }
 
 type Loader interface {
