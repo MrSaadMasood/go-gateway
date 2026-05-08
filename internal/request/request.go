@@ -73,7 +73,7 @@ func GetHandlerFunc(hrd HandleRequestData) (http.HandlerFunc, error) {
 		return false
 	}
 
-	var storer = hrd.GetService(config.Services)
+	storer := hrd.GetService(config.Services)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -148,4 +148,28 @@ func GetHandlerFunc(hrd HandleRequestData) (http.HandlerFunc, error) {
 		}
 	}, nil
 
+}
+
+func (req *request) H(hrd HandleRequestData, r *http.Request) error {
+
+	config, err := hrd.ConfigLoader.Load()
+	if err != nil {
+		return errors.New("failed to load config")
+	}
+
+	storer := hrd.GetService(config.Services)
+
+	key := string(enums.MapSuccessReqEvent) + string(enums.ReqInitialized)
+	keyActionMap := &ReqTransitionKeyActionMap{
+		key: func() {
+			service, err := storer.Map(r.URL.Path)
+		},
+	}
+	machine := NewReqStateMachine(keyActionMap)
+	machine.moveToMapSuccess(req)
+	for range {
+		
+	}
+
+	return nil
 }

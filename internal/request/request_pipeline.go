@@ -1,11 +1,9 @@
 package request
 
-import "gateway/internal/enums"
-
-type ReqTransitionData struct {
-	event      enums.ReqEvent
-	fromStatus []enums.RequestStatus
-}
+import (
+	"gateway/internal/enums"
+	"slices"
+)
 
 type ReqTransitionKeyActionMap map[string]func()
 
@@ -78,4 +76,30 @@ func NewReqStateMachine(kam *ReqTransitionKeyActionMap) reqStateMachine {
 			},
 		},
 	}
+}
+
+func (rsm *reqStateMachine) moveToMapSuccess(req *request) {
+	from := req.state
+	e := enums.MapSuccessReqEvent
+	sf, ok := rsm.eventStateMap[e]
+	if !ok {
+		req.state = enums.ReqServiceMapFailed
+		return
+	}
+
+	if !slices.Contains(sf.fromStatus, from) {
+		req.state = enums.ReqServiceMapFailed
+		return
+	}
+
+	key := string(e) + string(from)
+	action, ok := (*rsm.keyActionMap)[key]
+	if !ok {
+		req.state = enums.ReqServiceMapFailed
+		return
+	}
+
+	action()
+
+	req.state = sf.to
 }
