@@ -29,6 +29,23 @@ const (
 	ReqTimeout           RequestStatus = "timeout"
 )
 
+type ReqEvent string
+
+const (
+	InitializeReqEvent        ReqEvent = "initialize_request_event"
+	MapSuccessReqEvent        ReqEvent = "map_success_request_event"
+	MapFailedReqEvent         ReqEvent = "map_failed_request_event"
+	ValidationSuccessReqEvent ReqEvent = "validation_success_request_event"
+	ValidationFailedReqEvent  ReqEvent = "validation_failed_request_event"
+	RateLimitSuccessReqEvent  ReqEvent = "rate_limit_success_request_event"
+	RateLimitFailedReqEvent   ReqEvent = "rate_limit_failed_request_event"
+	ProxySuccessReqEvent      ReqEvent = "proxy_success_request_event"
+	ProxyFailedReqEvent       ReqEvent = "proxy_failed_request_event"
+	ReqSuccessEvent           ReqEvent = "request_success_event"
+	ReqFailedEvent            ReqEvent = "request_failed_event"
+	ReqTimeoutEvent           ReqEvent = "request_timeout_event"
+)
+
 var reqStatusMap = map[RequestStatus][]RequestStatus{
 	ReqInitialized:       {ReqServiceMapSuccess, ReqServiceMapFailed, ReqTimeout},
 	ReqServiceMapSuccess: {ReqValidationSuccess, ReqValidationFailed, ReqTimeout},
