@@ -332,7 +332,7 @@ func TestGetHandlerFunc(t *testing.T) {
 				mss.On("Map", endpoint).Return(configService)
 				serviceAccessController.On("Control", reqAccessControllerOpts(r.URL.Path)).Return(nil)
 				validtor.On("Validate", reqValidationOpts).Return(
-					errors.New("non terminal error"),
+					errors.Errorf("non terminal error"),
 				)
 				rateLimiter.On("Limit", reqRateLimiterOpts).Return(nil)
 				proxier.On("Proxy", r, redirectOpts).Return(resp, nil)

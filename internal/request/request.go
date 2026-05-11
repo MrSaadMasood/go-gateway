@@ -2,7 +2,6 @@ package request
 
 import (
 	"errors"
-	"fmt"
 	"gateway/internal/config"
 	"gateway/internal/controller"
 	customerrors "gateway/internal/custom-errors"
@@ -15,37 +14,6 @@ import (
 	"net/http"
 	"strings"
 )
-
-type request struct {
-	state enums.RequestStatus
-}
-
-func NewRequest() request {
-	return request{
-		state: enums.ReqInitialized,
-	}
-}
-
-func (r *request) NextState(to enums.RequestStatus) error {
-	err := r.state.Next(r.state, to)
-	if err != nil {
-		if errors.Is(err, enums.ErrReqTerminalState) {
-			r.state = to
-			return customerrors.ReqFailedErr{
-				Code:    http.StatusBadRequest,
-				Message: fmt.Sprintf("terminal state reached: %s", to),
-				Status:  to,
-			}
-		}
-		return err
-	}
-	r.state = to
-	return nil
-}
-
-func (r *request) hasReachedTerminalState() bool {
-	return r.state.IsTerminalState(r.state)
-}
 
 type HandleRequestData struct {
 	ConfigLoader            config.Loader
@@ -82,7 +50,6 @@ func GetHandlerFunc(hrd HandleRequestData) (http.HandlerFunc, error) {
 			return
 		}
 
-		req := NewRequest()
 		err = req.NextState(enums.ReqServiceMapSuccess)
 		if handleTerminalReqFailure(w, err) {
 			return
@@ -150,26 +117,27 @@ func GetHandlerFunc(hrd HandleRequestData) (http.HandlerFunc, error) {
 
 }
 
-func (req *request) H(hrd HandleRequestData, r *http.Request) error {
+func H(hrd HandleRequestData, r *http.Request) (http.HandlerFunc, error) {
 
 	config, err := hrd.ConfigLoader.Load()
 	if err != nil {
-		return errors.New("failed to load config")
+		return nil, errors.Errorf("failed to load config")
 	}
 
 	storer := hrd.GetService(config.Services)
 
-	key := string(enums.MapSuccessReqEvent) + string(enums.ReqInitialized)
-	keyActionMap := &ReqTransitionKeyActionMap{
-		key: func() {
+	keyActionMap := reqTransitionKeyActionMap{
+		{event: enums.MapSuccessReqEvent, from: enums.ReqInitialized}: func(r *http.Request) error {
 			service, err := storer.Map(r.URL.Path)
+			if err != nil {
+				return err
+			}
+			return nil
 		},
 	}
 	machine := NewReqStateMachine(keyActionMap)
-	machine.moveToMapSuccess(req)
-	for range {
-		
-	}
 
-	return nil
+	return func(w http.ResponseWriter, r *http.Request) {
+		machine.moveToMapSuccess(w, r)
+	}, nil
 }
