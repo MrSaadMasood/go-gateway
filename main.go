@@ -27,7 +27,7 @@ func main() {
 	var rateLimiter ratelimit.RateLimiter = ratelimit.ReqRateLimiter{}
 	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}
 
-	request.GetHandlerFunc(request.HandleRequestData{
+	request.GetHandler(request.HandleRequestData{
 		ConfigLoader:            configLoader,
 		Validator:               validator,
 		RateLimiter:             rateLimiter,

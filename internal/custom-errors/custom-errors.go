@@ -1,16 +1,36 @@
 package customerrors
 
 import (
-	"fmt"
 	"gateway/internal/enums"
 )
 
-type ReqFailedErr struct {
-	Code    int
-	Message string
-	Status  enums.RequestStatus
+type ReqFailer interface {
+	Error() string
+	Code() int
+	Status() enums.RequestStatus
+}
+type reqFailedErr struct {
+	code   int
+	status enums.RequestStatus
+	error
 }
 
-func (rfe ReqFailedErr) Error() string {
-	return fmt.Sprintf("message: %s", rfe.Message)
+func NewReqFailedErr(code int, status enums.RequestStatus, err error) reqFailedErr {
+	return reqFailedErr{
+		code:   code,
+		status: status,
+		error:  err,
+	}
+}
+
+func (rfe reqFailedErr) Error() string {
+	return rfe.Error()
+}
+
+func (rfe reqFailedErr) Code() int {
+	return rfe.code
+}
+
+func (rfe reqFailedErr) Status() enums.RequestStatus {
+	return rfe.status
 }

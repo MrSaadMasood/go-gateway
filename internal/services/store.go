@@ -29,6 +29,6 @@ func (s ServicesStore) Map(path string) (config.ServiceConfig, error) {
 			return v, nil
 		}
 	}
-	return config.ServiceConfig{}, errors.Errorf("path does not contain the service")
+	return config.ServiceConfig{}, errors.New("path does not contain the service")
 
 }

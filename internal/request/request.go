@@ -4,7 +4,6 @@ import (
 	"errors"
 	"gateway/internal/config"
 	"gateway/internal/controller"
-	customerrors "gateway/internal/custom-errors"
 	"gateway/internal/enums"
 	"gateway/internal/proxy"
 	ratelimit "gateway/internal/rate-limit"
@@ -24,82 +23,98 @@ type HandleRequestData struct {
 	GetService              services.GetServiceFunc
 }
 
-func GetHandlerFunc(hrd HandleRequestData) (http.HandlerFunc, error) {
+func GetHandler(hrd HandleRequestData) (http.Handler, error) {
 
-	config, err := hrd.ConfigLoader.Load()
+	c, err := hrd.ConfigLoader.Load()
 	if err != nil {
 		return nil, errors.New("failed to load config")
 	}
 
-	handleTerminalReqFailure := func(w http.ResponseWriter, err error) bool {
-		var reqFailedError customerrors.ReqFailedErr
-		if errors.As(err, &reqFailedError) {
-			w.WriteHeader(reqFailedError.Code)
-			w.Write([]byte(reqFailedError.Message))
-			return true
+	mapServiceToReqSuccess := func(c config.Config) ActionFunc {
+		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
+			storer := hrd.GetService(c.Services)
+			service, err := storer.Map(r.URL.Path)
+			if err != nil {
+				return nil, err
+			}
+			ctx := WithMappedService(r.Context(), &service)
+			req := r.WithContext(ctx)
+			return req, nil
 		}
-		return false
+
 	}
 
-	storer := hrd.GetService(config.Services)
+	validateReqSuccess := func(c config.Config) ActionFunc {
+		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
 
-	return func(w http.ResponseWriter, r *http.Request) {
+			service, err := MappedServiceFrom(r.Context())
+			if err != nil {
+				return nil, err
+			}
+			err = hrd.ServiceAccessController.Control(controller.AccessControllerOpts{
+				RestrictedServices: c.InternalOnlyServices,
+				RestrictedPaths:    c.InternalOnlyServicesUrls,
+				ServiceName:        service.ServiceName,
+				ReqPath:            r.URL.Path,
+			})
+			if err != nil {
+				return nil, err
+			}
 
-		service, err := storer.Map(r.URL.Path)
-		if handleTerminalReqFailure(w, err) {
-			return
+			err = hrd.Validator.Validate(validate.ValidationOpts{
+				GlobalBlockedIps:   c.BlockedIps,
+				GlobalReqSizeLimit: c.ReqSizeLimit,
+				ServiceOpts:        service,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return r, nil
+
 		}
 
-		err = req.NextState(enums.ReqServiceMapSuccess)
-		if handleTerminalReqFailure(w, err) {
-			return
-		}
+	}
 
-		err = hrd.ServiceAccessController.Control(controller.AccessControllerOpts{
-			RestrictedServices: config.InternalOnlyServices,
-			RestrictedPaths:    config.InternalOnlyServicesUrls,
-			ServiceName:        service.ServiceName,
-			ReqPath:            r.URL.Path,
-		})
-		if handleTerminalReqFailure(w, err) {
-			return
-		}
+	rateLimitReqSuccess := func(c config.Config) ActionFunc {
+		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
 
-		err = hrd.Validator.Validate(validate.ValidationOpts{
-			GlobalBlockedIps:   config.BlockedIps,
-			GlobalReqSizeLimit: config.ReqSizeLimit,
-			ServiceOpts:        service,
-		})
-		if handleTerminalReqFailure(w, err) {
-			return
-		}
+			service, err := MappedServiceFrom(r.Context())
+			if err != nil {
+				return nil, err
+			}
+			err = hrd.RateLimiter.Limit(ratelimit.RateLimitOpts{
+				GlobalRouteLimits:    c.RateLimit,
+				ServiceRateLimitOpts: *service.RateLimitOpts,
+			})
+			if err != nil {
+				return nil, err
+			}
 
-		err = req.NextState(enums.ReqValidationSuccess)
-		if handleTerminalReqFailure(w, err) {
-			return
-		}
+			return r, nil
 
-		err = hrd.RateLimiter.Limit(ratelimit.RateLimitOpts{
-			GlobalRouteLimits:    config.RateLimit,
-			ServiceRateLimitOpts: *service.RateLimitOpts,
-		})
-		if handleTerminalReqFailure(w, err) {
-			return
 		}
+	}
 
-		err = req.NextState(enums.ReqRateLimitSuccess)
-		if handleTerminalReqFailure(w, err) {
-			return
+	var proxyReqSuccess ActionFunc = func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
+
+		service, err := MappedServiceFrom(r.Context())
+		if err != nil {
+			return nil, err
 		}
-
 		res, err := hrd.Proxier.Proxy(r, *service.RedirectOpts)
-		if handleTerminalReqFailure(w, err) {
-			return
+		if err != nil {
+			return nil, err
 		}
+		ctx := WithProxyRes(r.Context(), &res)
 
-		err = req.NextState(enums.ReqProxySuccess)
-		if handleTerminalReqFailure(w, err) {
-			return
+		return r.WithContext(ctx), nil
+	}
+
+	var sendResponse ActionFunc = func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
+		res, err := ProxyResFrom(r.Context())
+		if err != nil {
+			return nil, err
 		}
 
 		for k, v := range res.Header {
@@ -109,35 +124,55 @@ func GetHandlerFunc(hrd HandleRequestData) (http.HandlerFunc, error) {
 		w.WriteHeader(res.StatusCode)
 		w.Write(body)
 
-		err = req.NextState(enums.ReqSuccess)
-		if handleTerminalReqFailure(w, err) {
-			return
-		}
-	}, nil
-
-}
-
-func H(hrd HandleRequestData, r *http.Request) (http.HandlerFunc, error) {
-
-	config, err := hrd.ConfigLoader.Load()
-	if err != nil {
-		return nil, errors.Errorf("failed to load config")
+		return r, nil
 	}
 
-	storer := hrd.GetService(config.Services)
+	failRequestWithStatus := func(s enums.RequestStatus) ActionFunc {
+		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
+			ctx := WithReqStatus(r.Context(), s)
+			return r.WithContext(ctx), nil
+		}
+	}
 
 	keyActionMap := reqTransitionKeyActionMap{
-		{event: enums.MapSuccessReqEvent, from: enums.ReqInitialized}: func(r *http.Request) error {
-			service, err := storer.Map(r.URL.Path)
-			if err != nil {
-				return err
-			}
-			return nil
-		},
+		{event: enums.MapSuccessReqEvent, from: enums.ReqInitialized}:              mapServiceToReqSuccess(c),
+		{event: enums.ValidationSuccessReqEvent, from: enums.ReqServiceMapSuccess}: validateReqSuccess(c),
+		{event: enums.RateLimitSuccessReqEvent, from: enums.ReqValidationSuccess}:  rateLimitReqSuccess(c),
+		{event: enums.ProxySuccessReqEvent, from: enums.ReqRateLimitSuccess}:       proxyReqSuccess,
+		{event: enums.ReqSuccessEvent, from: enums.ReqProxySuccess}:                sendResponse,
+
+		{event: enums.MapFailedReqEvent, from: enums.ReqInitialized}:              failRequestWithStatus(enums.ReqServiceMapFailed),
+		{event: enums.ValidationFailedReqEvent, from: enums.ReqServiceMapSuccess}: failRequestWithStatus(enums.ReqValidationFailed),
+		{event: enums.RateLimitFailedReqEvent, from: enums.ReqValidationSuccess}:  failRequestWithStatus(enums.ReqRateLimitFailed),
+		{event: enums.ProxyFailedReqEvent, from: enums.ReqRateLimitSuccess}:       failRequestWithStatus(enums.ReqProxyFailed),
+
+		{event: enums.ReqFailedEvent, from: enums.ReqServiceMapFailed}: failRequestWithStatus(enums.ReqFailed),
+		{event: enums.ReqFailedEvent, from: enums.ReqValidationFailed}: failRequestWithStatus(enums.ReqFailed),
+		{event: enums.ReqFailedEvent, from: enums.ReqRateLimitFailed}:  failRequestWithStatus(enums.ReqFailed),
+		{event: enums.ReqFailedEvent, from: enums.ReqProxyFailed}:      failRequestWithStatus(enums.ReqFailed),
+
+		{event: enums.ReqTimeoutEvent, from: enums.ReqInitialized}:       failRequestWithStatus(enums.ReqTimeout),
+		{event: enums.ReqTimeoutEvent, from: enums.ReqServiceMapSuccess}: failRequestWithStatus(enums.ReqTimeout),
+		{event: enums.ReqTimeoutEvent, from: enums.ReqServiceMapFailed}:  failRequestWithStatus(enums.ReqTimeout),
+		{event: enums.ReqTimeoutEvent, from: enums.ReqValidationSuccess}: failRequestWithStatus(enums.ReqTimeout),
+		{event: enums.ReqTimeoutEvent, from: enums.ReqValidationFailed}:  failRequestWithStatus(enums.ReqTimeout),
+		{event: enums.ReqTimeoutEvent, from: enums.ReqRateLimitSuccess}:  failRequestWithStatus(enums.ReqTimeout),
+		{event: enums.ReqTimeoutEvent, from: enums.ReqRateLimitFailed}:   failRequestWithStatus(enums.ReqTimeout),
+		{event: enums.ReqTimeoutEvent, from: enums.ReqProxySuccess}:      failRequestWithStatus(enums.ReqTimeout),
+		{event: enums.ReqTimeoutEvent, from: enums.ReqProxyFailed}:       failRequestWithStatus(enums.ReqTimeout),
 	}
 	machine := NewReqStateMachine(keyActionMap)
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		machine.moveToMapSuccess(w, r)
-	}, nil
+	handler := machine.initializeRequest(
+		machine.mapToServiceM(
+			machine.validationM(
+				machine.rateLimiterM(
+					machine.proxyM(
+						machine.sendSuccessM(),
+					),
+				),
+			),
+		),
+	)
+	return handler, nil
 }
