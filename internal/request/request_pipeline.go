@@ -108,33 +108,37 @@ func (m *reqStateMachine) initializeRequest(f types.HandlerFuncWithError) http.H
 	})
 }
 
-func (m *reqStateMachine) mapToServiceM(f types.HandlerFuncWithError) types.HandlerFuncWithError {
-	return m.withWrapper(f, enums.MapSuccessReqEvent)
+func (m *reqStateMachine) serviceMapM(f types.HandlerFuncWithError) types.HandlerFuncWithError {
+	return m.withWrapper(f, enums.MapSuccessReqEvent, enums.ReqServiceMapFailed)
 
 }
 
 func (m *reqStateMachine) validationM(f types.HandlerFuncWithError) types.HandlerFuncWithError {
-	return m.withWrapper(f, enums.ValidationSuccessReqEvent)
+	return m.withWrapper(f, enums.ValidationSuccessReqEvent, enums.ReqValidationFailed)
 }
 
 func (m *reqStateMachine) rateLimiterM(f types.HandlerFuncWithError) types.HandlerFuncWithError {
-	return m.withWrapper(f, enums.RateLimitSuccessReqEvent)
+	return m.withWrapper(f, enums.RateLimitSuccessReqEvent, enums.ReqRateLimitFailed)
 }
 
 func (m *reqStateMachine) proxyM(f types.HandlerFuncWithError) types.HandlerFuncWithError {
-	return m.withWrapper(f, enums.ProxySuccessReqEvent)
+	return m.withWrapper(f, enums.ProxySuccessReqEvent, enums.ReqProxyFailed)
 }
 
 func (m *reqStateMachine) sendSuccessM() types.HandlerFuncWithError {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		_, err := m.fire(w, r, enums.ReqSuccessEvent, enums.ReqFailed)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 }
 
-func (m *reqStateMachine) withWrapper(f types.HandlerFuncWithError, event enums.ReqEvent) types.HandlerFuncWithError {
+func (m *reqStateMachine) withWrapper(f types.HandlerFuncWithError, event enums.ReqEvent, fs enums.RequestStatus) types.HandlerFuncWithError {
 	return m.customErrorHandlerM(func(w http.ResponseWriter, r *http.Request) error {
 
-		req, err := m.fire(w, r, event)
+		req, err := m.fire(w, r, event, fs)
 		if err != nil {
 			return err
 		}
@@ -160,39 +164,43 @@ func (m *reqStateMachine) customErrorHandlerM(f types.HandlerFuncWithError) type
 func (m *reqStateMachine) sendError(err error, w http.ResponseWriter) {
 	if err != nil {
 		var reqFailer customerrors.ReqFailer
-		if errors.As(err, &reqFailer) {
+		ok := errors.As(err, &reqFailer)
+		fmt.Print("the ok is", ok)
+		if ok {
 			http.Error(w, fmt.Sprintf("req failed with status: %s and error: %s", reqFailer.Status(), reqFailer.Error()), reqFailer.Code())
+			return
 		}
 		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
 }
 
-func (m *reqStateMachine) fire(w http.ResponseWriter, r *http.Request, successEvent enums.ReqEvent) (*http.Request, error) {
+func (m *reqStateMachine) fire(w http.ResponseWriter, r *http.Request, successEvent enums.ReqEvent, failureState enums.RequestStatus) (*http.Request, error) {
 	ctx := r.Context()
 
 	from, err := StatusFrom(ctx)
 	if err != nil {
-		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, from, err)
+		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, failureState, err)
 	}
 
 	sf, ok := m.eventStateMap[successEvent]
 	if !ok {
-		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, from, err)
+		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, failureState, err)
 	}
 
 	if !slices.Contains(sf.fromStatus, from) {
-		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, from, err)
+		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, failureState, err)
 	}
 
 	key := GenerateActionKey(successEvent, from)
 	action, ok := m.keyActionMap[key]
 	if !ok {
-		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, from, err)
+		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, failureState, err)
 	}
 
 	req, err := action(w, r)
 	if err != nil {
-		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, from, err)
+		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, failureState, err)
 	}
 
 	return m.updateRequestStatus(req, sf.to), nil
@@ -223,7 +231,7 @@ func StatusFrom(ctx context.Context) (enums.RequestStatus, error) {
 	return s, nil
 }
 
-func WithMappedService(ctx context.Context, s *config.ServiceConfig) context.Context {
+func WithMappedService(ctx context.Context, s config.ServiceConfig) context.Context {
 	return context.WithValue(ctx, "mapped-service", s)
 }
 
@@ -240,7 +248,7 @@ func WithProxyRes(ctx context.Context, res *http.Response) context.Context {
 }
 
 func ProxyResFrom(ctx context.Context) (*http.Response, error) {
-	res, ok := ctx.Value("proxy-request").(*http.Response)
+	res, ok := ctx.Value("proxy-response").(*http.Response)
 	if !ok {
 		return nil, errors.New("no response found from context")
 	}

@@ -37,7 +37,7 @@ func GetHandler(hrd HandleRequestData) (http.Handler, error) {
 			if err != nil {
 				return nil, err
 			}
-			ctx := WithMappedService(r.Context(), &service)
+			ctx := WithMappedService(r.Context(), service)
 			req := r.WithContext(ctx)
 			return req, nil
 		}
@@ -102,7 +102,7 @@ func GetHandler(hrd HandleRequestData) (http.Handler, error) {
 		if err != nil {
 			return nil, err
 		}
-		res, err := hrd.Proxier.Proxy(r, *service.RedirectOpts)
+		res, err := hrd.Proxier.Proxy(r.Method, r.Body, r.Header, r.URL, *service.RedirectOpts)
 		if err != nil {
 			return nil, err
 		}
@@ -164,7 +164,7 @@ func GetHandler(hrd HandleRequestData) (http.Handler, error) {
 	machine := NewReqStateMachine(keyActionMap)
 
 	handler := machine.initializeRequest(
-		machine.mapToServiceM(
+		machine.serviceMapM(
 			machine.validationM(
 				machine.rateLimiterM(
 					machine.proxyM(

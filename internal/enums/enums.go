@@ -85,18 +85,3 @@ func (*RequestStatus) Next(from RequestStatus, to RequestStatus) error {
 
 	return nil
 }
-
-func (rs RequestStatus) IsTerminalState(s RequestStatus) bool {
-	terminalStates := make([]RequestStatus, 0)
-	for k, v := range reqStatusMap {
-		if len(v) == 0 {
-			terminalStates = append(terminalStates, k)
-		}
-	}
-
-	if slices.Contains(terminalStates, s) {
-		return true
-	}
-
-	return false
-}

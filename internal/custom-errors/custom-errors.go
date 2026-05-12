@@ -24,7 +24,7 @@ func NewReqFailedErr(code int, status enums.RequestStatus, err error) reqFailedE
 }
 
 func (rfe reqFailedErr) Error() string {
-	return rfe.Error()
+	return rfe.error.Error()
 }
 
 func (rfe reqFailedErr) Code() int {
