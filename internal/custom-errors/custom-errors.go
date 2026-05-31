@@ -10,21 +10,25 @@ type ReqFailer interface {
 	Status() enums.RequestStatus
 }
 type reqFailedErr struct {
-	code   int
-	status enums.RequestStatus
-	error
+	code     int
+	status   enums.RequestStatus
+	innerErr error
 }
 
 func NewReqFailedErr(code int, status enums.RequestStatus, err error) reqFailedErr {
 	return reqFailedErr{
-		code:   code,
-		status: status,
-		error:  err,
+		code:     code,
+		status:   status,
+		innerErr: err,
 	}
 }
 
 func (rfe reqFailedErr) Error() string {
-	return rfe.error.Error()
+	return rfe.innerErr.Error()
+}
+
+func (rfe reqFailedErr) Unwrap() error {
+	return rfe.innerErr
 }
 
 func (rfe reqFailedErr) Code() int {

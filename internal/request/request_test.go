@@ -1,6 +1,7 @@
 package request
 
 import (
+	"context"
 	"errors"
 	"gateway/internal/config"
 	"gateway/internal/controller"
@@ -48,8 +49,8 @@ func (mp *mockProxier) Proxy(method string, body io.ReadCloser, h http.Header, u
 
 type mockRateLimiter struct{ mock.Mock }
 
-func (mrl *mockRateLimiter) Limit(rlo ratelimit.RateLimitOpts) error {
-	args := mrl.Called(rlo)
+func (mrl *mockRateLimiter) Limit(serviceName, path string) error {
+	args := mrl.Called(serviceName, path)
 	return args.Error(0)
 }
 
@@ -123,10 +124,7 @@ func TestGetHandler(t *testing.T) {
 		ServiceOpts:        configService,
 	}
 
-	reqRateLimiterOpts := ratelimit.RateLimitOpts{
-		GlobalRouteLimits:    c.RateLimit,
-		ServiceRateLimitOpts: rateLimitOpts,
-	}
+	reqRateLimiterOpts := ratelimit.NewReqRateLimiter(context.Background())
 
 	reqAccessControllerOpts := func(path string) controller.AccessControllerOpts {
 		return controller.AccessControllerOpts{
@@ -155,7 +153,7 @@ func TestGetHandler(t *testing.T) {
 					return &mss
 				}
 
-				endpoint := "/test-service/v1"
+				en routeLevelRateLimitErrdpoint := "/test-service/v1"
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
 				responseBodyText := "hello world"
@@ -170,7 +168,7 @@ func TestGetHandler(t *testing.T) {
 				mss.On("Map", endpoint).Return(configService)
 				serviceAccessController.On("Control", reqAccessControllerOpts(r.URL.Path)).Return(nil)
 				validtor.On("Validate", reqValidationOpts).Return(nil)
-				rateLimiter.On("Limit", reqRateLimiterOpts).Return(nil)
+				rateLimiter.On("Limit", endpoint).Return(nil)
 				proxier.On("Proxy", r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(resp, nil)
 
 				hrd := HandleRequestData{
