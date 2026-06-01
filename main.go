@@ -39,8 +39,14 @@ func main() {
 
 	var validator validate.Validator = validate.ReqValidator{}
 	var proxier proxy.Proxier = proxy.ReqProxy{}
-	var rateLimiter ratelimit.RateLimiter = ratelimit.ReqRateLimiter{}
+	var rateLimiter ratelimit.RateLimiter = ratelimit.{}
 	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}
+
+
+	c, err := hrd.ConfigLoader.Load()
+	if err != nil {
+		panic("failed to load config")
+	}
 
 	h, err := request.NewHandler(request.HandleRequestData{
 		Config:                  c,

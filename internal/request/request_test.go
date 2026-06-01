@@ -2,6 +2,7 @@ package request
 
 import (
 	"context"
+	"context"
 	"errors"
 	"gateway/internal/config"
 	"gateway/internal/controller"
@@ -49,8 +50,8 @@ func (mp *mockProxier) Proxy(ctx context.Context, method string, body io.ReadClo
 
 type mockRateLimiter struct{ mock.Mock }
 
-func (mrl *mockRateLimiter) Limit(rlo ratelimit.RateLimitOpts) error {
-	args := mrl.Called(rlo)
+func (mrl *mockRateLimiter) Limit(serviceName, path string) error {
+	args := mrl.Called(serviceName, path)
 	return args.Error(0)
 }
 
@@ -129,10 +130,7 @@ func TestGetHandler(t *testing.T) {
 		ServiceOpts:        configService,
 	}
 
-	reqRateLimiterOpts := ratelimit.RateLimitOpts{
-		GlobalRouteLimits:    c.RateLimit,
-		ServiceRateLimitOpts: rateLimitOpts,
-	}
+	reqRateLimiterOpts := ratelimit.NewReqRateLimiter(context.Background())
 
 	reqAccessControllerOpts := func(path string) controller.AccessControllerOpts {
 		return controller.AccessControllerOpts{
@@ -161,7 +159,7 @@ func TestGetHandler(t *testing.T) {
 					return &mss
 				}
 
-				endpoint := "/test-service/v1"
+				en routeLevelRateLimitErrdpoint := "/test-service/v1"
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
 				responseBodyText := "hello world"

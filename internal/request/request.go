@@ -81,10 +81,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 			if err != nil {
 				return nil, err
 			}
-			err = hrd.RateLimiter.Limit(ratelimit.RateLimitOpts{
-				GlobalRouteLimits:    c.RateLimit,
-				ServiceRateLimitOpts: *service.RateLimitOpts,
-			})
+			err = hrd.RateLimiter.Limit(service.ServiceName, r.URL.Path, r.RemoteAddr)
 			if err != nil {
 				return nil, err
 			}

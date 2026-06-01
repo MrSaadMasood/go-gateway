@@ -161,6 +161,20 @@ func (m *reqStateMachine) customErrorHandlerM(f types.HandlerFuncWithError) type
 	}
 }
 
+func (m *reqStateMachine) sendError(err error, w http.ResponseWriter) {
+	if err != nil {
+		var reqFailer customerrors.ReqFailer
+		ok := errors.As(err, &reqFailer)
+		fmt.Print("the ok is", ok)
+		if ok {
+			http.Error(w, fmt.Sprintf("req failed with status: %s and error: %s", reqFailer.Status(), reqFailer.Error()), reqFailer.Code())
+			return
+		}
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+}
+
 func (m *reqStateMachine) fire(w http.ResponseWriter, r *http.Request, successEvent enums.ReqEvent, failureState enums.RequestStatus) (*http.Request, error) {
 	ctx := r.Context()
 
