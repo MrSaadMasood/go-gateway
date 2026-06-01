@@ -40,6 +40,7 @@ type ServiceValidatorOpts struct {
 
 type ServiceRedirectOpts struct {
 	RouteLevelRedirection map[reqPath]redirectPath
+	ProxyReqTimeout       *time.Duration
 }
 
 type ServiceVersionOpts struct {
@@ -56,13 +57,27 @@ type ServiceDepricationOpts struct {
 type ServiceConfig struct {
 	ServiceName        string
 	ServiceUrl         string
-	Timeout            *time.Time
+	Timeout            *time.Duration
 	RateLimitOpts      *ServiceRateLimitOpts
 	ValidatorOpts      *ServiceValidatorOpts
 	RedirectOpts       *ServiceRedirectOpts
 	UrlDepricationOpts *ServiceDepricationOpts
 	PolicyOpts         *ServicePolicyOpts
 	VersionOpts        *ServiceVersionOpts
+}
+
+func (sc *ServiceConfig) GetProxyTimeout(globalTimeout time.Duration) time.Duration {
+
+	var timeout time.Duration
+	if sc.RedirectOpts != nil && sc.RedirectOpts.ProxyReqTimeout != nil {
+		timeout = *sc.RedirectOpts.ProxyReqTimeout
+	} else if sc.Timeout != nil {
+		timeout = *sc.Timeout
+	} else {
+		timeout = globalTimeout
+	}
+	return timeout
+
 }
 
 type Config struct {

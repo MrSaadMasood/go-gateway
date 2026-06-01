@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"gateway/internal/config"
 	"io"
 	"net/http"
@@ -8,11 +9,11 @@ import (
 )
 
 type Proxier interface {
-	Proxy(method string, body io.ReadCloser, h http.Header, url *url.URL, ro config.ServiceRedirectOpts) (http.Response, error)
+	Proxy(ctx context.Context, method string, body io.ReadCloser, h http.Header, url *url.URL, ro config.ServiceRedirectOpts) (http.Response, error)
 }
 
 type ReqProxy struct{}
 
-func (ReqProxy) Proxy(method string, body io.ReadCloser, h http.Header, url *url.URL, ro config.ServiceRedirectOpts) (http.Response, error) {
+func (ReqProxy) Proxy(ctx context.Context, method string, body io.ReadCloser, h http.Header, url *url.URL, ro config.ServiceRedirectOpts) (http.Response, error) {
 	return http.Response{}, nil
 }

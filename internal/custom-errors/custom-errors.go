@@ -1,7 +1,10 @@
 package customerrors
 
 import (
+	"context"
+	"errors"
 	"gateway/internal/enums"
+	"net/http"
 )
 
 type ReqFailer interface {
@@ -15,7 +18,12 @@ type reqFailedErr struct {
 	error
 }
 
-func NewReqFailedErr(code int, status enums.RequestStatus, err error) reqFailedErr {
+func NewReqFailedErr(code int, status enums.RequestStatus, err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		code = http.StatusRequestTimeout
+		status = enums.ReqTimeout
+	}
+
 	return reqFailedErr{
 		code:   code,
 		status: status,

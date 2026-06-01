@@ -1,10 +1,5 @@
 package enums
 
-import (
-	"errors"
-	"slices"
-)
-
 type ServiceStatus string
 
 const (
@@ -59,29 +54,4 @@ var reqStatusMap = map[RequestStatus][]RequestStatus{
 	ReqSuccess:           {},
 	ReqFailed:            {},
 	ReqTimeout:           {},
-}
-
-var ErrReqTerminalState = errors.New("final state reached")
-
-func (*RequestStatus) Next(from RequestStatus, to RequestStatus) error {
-
-	if from == to {
-		return errors.New("current and next states cannot be equal")
-	}
-
-	currStates, ok := reqStatusMap[from]
-	if !ok {
-		return errors.New("invalid state provided")
-	}
-
-	if len(currStates) == 0 || to == ReqInitialized {
-		return ErrReqTerminalState
-	}
-
-	allowed := slices.Contains(currStates, to)
-	if !allowed {
-		return errors.New("transition not allowed")
-	}
-
-	return nil
 }

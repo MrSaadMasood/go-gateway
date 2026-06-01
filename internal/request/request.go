@@ -1,6 +1,7 @@
 package request
 
 import (
+	"context"
 	"errors"
 	"gateway/internal/config"
 	"gateway/internal/controller"
@@ -12,10 +13,11 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type HandleRequestData struct {
-	ConfigLoader            config.Loader
+	Config                  config.Config
 	Validator               validate.Validator
 	Proxier                 proxy.Proxier
 	RateLimiter             ratelimit.RateLimiter
@@ -23,16 +25,13 @@ type HandleRequestData struct {
 	GetService              services.GetServiceFunc
 }
 
-func GetHandler(hrd HandleRequestData) (http.Handler, error) {
+func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 
-	c, err := hrd.ConfigLoader.Load()
-	if err != nil {
-		return nil, errors.New("failed to load config")
-	}
+	c := hrd.Config
+	storer := hrd.GetService(c.Services)
 
-	mapServiceToReqSuccess := func(c config.Config) ActionFunc {
+	mapServiceToReqSuccess := func(config.Config) ActionFunc {
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
-			storer := hrd.GetService(c.Services)
 			service, err := storer.Map(r.URL.Path)
 			if err != nil {
 				return nil, err
@@ -41,7 +40,6 @@ func GetHandler(hrd HandleRequestData) (http.Handler, error) {
 			req := r.WithContext(ctx)
 			return req, nil
 		}
-
 	}
 
 	validateReqSuccess := func(c config.Config) ActionFunc {
@@ -96,19 +94,40 @@ func GetHandler(hrd HandleRequestData) (http.Handler, error) {
 		}
 	}
 
-	var proxyReqSuccess ActionFunc = func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
+	proxyReqSuccess := func(config.Config) ActionFunc {
 
-		service, err := MappedServiceFrom(r.Context())
-		if err != nil {
-			return nil, err
-		}
-		res, err := hrd.Proxier.Proxy(r.Method, r.Body, r.Header, r.URL, *service.RedirectOpts)
-		if err != nil {
-			return nil, err
-		}
-		ctx := WithProxyRes(r.Context(), &res)
+		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
 
-		return r.WithContext(ctx), nil
+			service, err := MappedServiceFrom(r.Context())
+			if err != nil {
+				return nil, err
+			}
+
+			reqCtx := r.Context()
+
+			deadline, ok := reqCtx.Deadline()
+			if !ok {
+				return nil, errors.New("no deadline set on the request")
+			}
+
+			timeout := time.Until(deadline)
+			if timeout <= 0 {
+				return nil, context.DeadlineExceeded
+			}
+
+			timeoutCtx, cancel := context.WithTimeout(r.Context(), timeout)
+			defer cancel()
+
+			res, err := hrd.Proxier.Proxy(timeoutCtx, r.Method, r.Body, r.Header, r.URL, *service.RedirectOpts)
+			if err != nil {
+				return nil, err
+			}
+
+			ctx := WithProxyRes(reqCtx, &res)
+
+			return r.WithContext(ctx), nil
+
+		}
 	}
 
 	var sendResponse ActionFunc = func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
@@ -138,7 +157,7 @@ func GetHandler(hrd HandleRequestData) (http.Handler, error) {
 		{event: enums.MapSuccessReqEvent, from: enums.ReqInitialized}:              mapServiceToReqSuccess(c),
 		{event: enums.ValidationSuccessReqEvent, from: enums.ReqServiceMapSuccess}: validateReqSuccess(c),
 		{event: enums.RateLimitSuccessReqEvent, from: enums.ReqValidationSuccess}:  rateLimitReqSuccess(c),
-		{event: enums.ProxySuccessReqEvent, from: enums.ReqRateLimitSuccess}:       proxyReqSuccess,
+		{event: enums.ProxySuccessReqEvent, from: enums.ReqRateLimitSuccess}:       proxyReqSuccess(c),
 		{event: enums.ReqSuccessEvent, from: enums.ReqProxySuccess}:                sendResponse,
 
 		{event: enums.MapFailedReqEvent, from: enums.ReqInitialized}:              failRequestWithStatus(enums.ReqServiceMapFailed),
@@ -174,5 +193,24 @@ func GetHandler(hrd HandleRequestData) (http.Handler, error) {
 			),
 		),
 	)
-	return handler, nil
+
+	timeoutMiddleware := func(c config.Config) func(http.Handler) http.Handler {
+		return func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				service, err := storer.Map(r.URL.Path)
+				if err != nil {
+					sendError(err, w)
+					return
+				}
+				ctx, cancel := context.WithTimeout(r.Context(), service.GetProxyTimeout(c.Timeout))
+				defer cancel()
+				h.ServeHTTP(w, r.WithContext(ctx))
+			})
+		}
+	}
+
+	middleware := timeoutMiddleware(c)
+	th := middleware(handler)
+
+	return th, nil
 }

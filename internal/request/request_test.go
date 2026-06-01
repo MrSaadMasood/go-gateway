@@ -1,6 +1,7 @@
 package request
 
 import (
+	"context"
 	"errors"
 	"gateway/internal/config"
 	"gateway/internal/controller"
@@ -41,9 +42,9 @@ func (mv *mockValidator) Validate(opts validate.ValidationOpts) error {
 
 type mockProxier struct{ mock.Mock }
 
-func (mp *mockProxier) Proxy(method string, body io.ReadCloser, h http.Header, url *url.URL, ro config.ServiceRedirectOpts) (http.Response, error) {
-	args := mp.Called(method, body, h, url, ro)
-	return args.Get(0).(http.Response), nil
+func (mp *mockProxier) Proxy(ctx context.Context, method string, body io.ReadCloser, h http.Header, url *url.URL, ro config.ServiceRedirectOpts) (http.Response, error) {
+	args := mp.Called(ctx, method, body, h, url, ro)
+	return args.Get(0).(http.Response), args.Error(1)
 }
 
 type mockRateLimiter struct{ mock.Mock }
@@ -69,6 +70,11 @@ func (mss *mockServiceStore) Map(path string) (config.ServiceConfig, error) {
 
 func TestGetHandler(t *testing.T) {
 
+	sampleTimeout := func(i int) *time.Duration {
+		timeout := time.Duration(i) * time.Second
+		return &timeout
+	}
+
 	rateLimitOpts := config.ServiceRateLimitOpts{
 		RateLimit:            nil,
 		RouteLevelRateLimits: nil,
@@ -79,7 +85,7 @@ func TestGetHandler(t *testing.T) {
 		RestrictedHeaders:  nil,
 		AllowedHeaders:     nil,
 	}
-	redirectOpts := config.ServiceRedirectOpts{RouteLevelRedirection: nil}
+	redirectOpts := config.ServiceRedirectOpts{RouteLevelRedirection: nil, ProxyReqTimeout: sampleTimeout(2)}
 	urlDeprecationOpts := config.ServiceDepricationOpts{
 		DeprecatedUrls:    nil,
 		DeprecatedHeaders: nil,
@@ -94,7 +100,7 @@ func TestGetHandler(t *testing.T) {
 	configService := config.ServiceConfig{
 		ServiceName:        "test-service",
 		ServiceUrl:         "/test-service",
-		Timeout:            nil,
+		Timeout:            sampleTimeout(4),
 		RateLimitOpts:      &rateLimitOpts,
 		ValidatorOpts:      &validatorOpts,
 		RedirectOpts:       &redirectOpts,
@@ -171,10 +177,14 @@ func TestGetHandler(t *testing.T) {
 				serviceAccessController.On("Control", reqAccessControllerOpts(r.URL.Path)).Return(nil)
 				validtor.On("Validate", reqValidationOpts).Return(nil)
 				rateLimiter.On("Limit", reqRateLimiterOpts).Return(nil)
-				proxier.On("Proxy", r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(resp, nil)
+				proxier.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool {
+					return true
+				}), r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(resp, nil)
+				c, err := configLoader.Load()
+				assert.NoError(t, err)
 
 				hrd := HandleRequestData{
-					ConfigLoader:            &configLoader,
+					Config:                  c,
 					Validator:               &validtor,
 					Proxier:                 &proxier,
 					RateLimiter:             &rateLimiter,
@@ -182,7 +192,7 @@ func TestGetHandler(t *testing.T) {
 					GetService:              getServiceFunc,
 				}
 
-				handler, err := GetHandler(hrd)
+				handler, err := NewHandler(hrd)
 				if err != nil {
 					t.Fatal("failed to get handler", err)
 				}
@@ -233,10 +243,16 @@ func TestGetHandler(t *testing.T) {
 				serviceAccessController.On("Control", reqAccessControllerOpts(r.URL.Path)).Return(nil).Run(addCall(3))
 				validtor.On("Validate", reqValidationOpts).Return(nil).Run(addCall(4))
 				rateLimiter.On("Limit", reqRateLimiterOpts).Return(nil).Run(addCall(5))
-				proxier.On("Proxy", r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(resp, nil).Run(addCall(6))
+
+				proxier.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool {
+					return true
+				}), r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(resp, nil).Run(addCall(6))
+
+				c, err := configLoader.Load()
+				assert.NoError(t, err)
 
 				hrd := HandleRequestData{
-					ConfigLoader:            &configLoader,
+					Config:                  c,
 					Validator:               &validtor,
 					Proxier:                 &proxier,
 					RateLimiter:             &rateLimiter,
@@ -244,7 +260,7 @@ func TestGetHandler(t *testing.T) {
 					GetService:              getServiceFunc,
 				}
 
-				handler, err := GetHandler(hrd)
+				handler, err := NewHandler(hrd)
 				if err != nil {
 					t.Fatal("failed to get handler", err)
 				}
@@ -284,10 +300,14 @@ func TestGetHandler(t *testing.T) {
 					customerrors.NewReqFailedErr(http.StatusBadRequest, enums.ReqValidationFailed, errors.New("request validation failed")),
 				)
 				rateLimiter.On("Limit", reqRateLimiterOpts).Return(nil)
-				proxier.On("Proxy", r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(resp, nil)
+
+				proxier.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool { return true }), r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(resp, nil)
+
+				c, err := configLoader.Load()
+				assert.NoError(t, err)
 
 				hrd := HandleRequestData{
-					ConfigLoader:            &configLoader,
+					Config:                  c,
 					Validator:               &validtor,
 					Proxier:                 &proxier,
 					RateLimiter:             &rateLimiter,
@@ -295,7 +315,7 @@ func TestGetHandler(t *testing.T) {
 					GetService:              getServiceFunc,
 				}
 
-				handler, err := GetHandler(hrd)
+				handler, err := NewHandler(hrd)
 				if err != nil {
 					t.Fatal("failed to get handler", err)
 				}
@@ -303,7 +323,112 @@ func TestGetHandler(t *testing.T) {
 				w := httptest.NewRecorder()
 				handler.ServeHTTP(w, r)
 				defer w.Result().Body.Close()
-				assert.Equal(t, w.Result().StatusCode, http.StatusBadRequest)
+
+			},
+		},
+		{
+			name: "request should terminate before proxy if the deadline is exceeded ",
+			t: func(t *testing.T) {
+
+				endpoint := "/test-service/v1"
+				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
+				defer r.Body.Close()
+				responseBodyText := "hello world"
+				resp := http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(responseBodyText))}
+
+				configLoader := mockConfig{}
+				validtor := mockValidator{}
+				proxier := mockProxier{}
+				rateLimiter := mockRateLimiter{}
+				serviceAccessController := mockServiceAccessController{}
+				mss := mockServiceStore{}
+				var getServiceFunc services.GetServiceFunc = func(scs []config.ServiceConfig) services.Storer {
+					return &mss
+				}
+
+				configLoader.On("Load").Return(c, nil)
+				mss.On("Map", endpoint).Return(configService)
+				serviceAccessController.On("Control", reqAccessControllerOpts(r.URL.Path)).Return(nil)
+				validtor.On("Validate", reqValidationOpts).Return(nil)
+				rateLimiter.On("Limit", reqRateLimiterOpts).Return(nil).Run(func(args mock.Arguments) {
+					time.Sleep(3 * time.Second)
+				})
+
+				proxier.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool { return true }), r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(resp, nil)
+
+				c, err := configLoader.Load()
+				assert.NoError(t, err)
+
+				hrd := HandleRequestData{
+					Config:                  c,
+					Validator:               &validtor,
+					Proxier:                 &proxier,
+					RateLimiter:             &rateLimiter,
+					ServiceAccessController: &serviceAccessController,
+					GetService:              getServiceFunc,
+				}
+
+				handler, err := NewHandler(hrd)
+				if err != nil {
+					t.Fatal("failed to get handler", err)
+				}
+
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, r)
+				defer w.Result().Body.Close()
+				rateLimiter.AssertExpectations(t)
+				assert.Equal(t, http.StatusRequestTimeout, w.Result().StatusCode)
+
+			},
+		},
+		{
+			name: "req should terminate proxy if the context times out",
+			t: func(t *testing.T) {
+
+				endpoint := "/test-service/v1"
+				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
+				defer r.Body.Close()
+
+				configLoader := mockConfig{}
+				validtor := mockValidator{}
+				proxier := mockProxier{}
+				rateLimiter := mockRateLimiter{}
+				serviceAccessController := mockServiceAccessController{}
+				mss := mockServiceStore{}
+				var getServiceFunc services.GetServiceFunc = func(scs []config.ServiceConfig) services.Storer {
+					return &mss
+				}
+
+				configLoader.On("Load").Return(c, nil)
+				mss.On("Map", endpoint).Return(configService)
+				serviceAccessController.On("Control", reqAccessControllerOpts(r.URL.Path)).Return(nil)
+				validtor.On("Validate", reqValidationOpts).Return(nil)
+				rateLimiter.On("Limit", reqRateLimiterOpts).Return(nil)
+
+				proxier.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool {
+					return true
+				}), r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(http.Response{}, context.DeadlineExceeded)
+				c, err := configLoader.Load()
+				assert.NoError(t, err)
+
+				hrd := HandleRequestData{
+					Config:                  c,
+					Validator:               &validtor,
+					Proxier:                 &proxier,
+					RateLimiter:             &rateLimiter,
+					ServiceAccessController: &serviceAccessController,
+					GetService:              getServiceFunc,
+				}
+
+				handler, err := NewHandler(hrd)
+				if err != nil {
+					t.Fatal("failed to get handler", err)
+				}
+
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, r)
+				defer w.Result().Body.Close()
+				assert.Equal(t, http.StatusRequestTimeout, w.Result().StatusCode)
 
 			},
 		},

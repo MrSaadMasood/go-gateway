@@ -104,7 +104,7 @@ func (m *reqStateMachine) initializeRequest(f types.HandlerFuncWithError) http.H
 		ctx := r.Context()
 		newReq := r.WithContext(WithReqStatus(ctx, enums.ReqInitialized))
 		err := f(w, newReq)
-		m.sendError(err, w)
+		sendError(err, w)
 	})
 }
 
@@ -156,22 +156,8 @@ func (m *reqStateMachine) withWrapper(f types.HandlerFuncWithError, event enums.
 func (m *reqStateMachine) customErrorHandlerM(f types.HandlerFuncWithError) types.HandlerFuncWithError {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		err := f(w, r)
-		m.sendError(err, w)
+		sendError(err, w)
 		return nil
-	}
-}
-
-func (m *reqStateMachine) sendError(err error, w http.ResponseWriter) {
-	if err != nil {
-		var reqFailer customerrors.ReqFailer
-		ok := errors.As(err, &reqFailer)
-		fmt.Print("the ok is", ok)
-		if ok {
-			http.Error(w, fmt.Sprintf("req failed with status: %s and error: %s", reqFailer.Status(), reqFailer.Error()), reqFailer.Code())
-			return
-		}
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
 	}
 }
 
@@ -253,4 +239,19 @@ func ProxyResFrom(ctx context.Context) (*http.Response, error) {
 		return nil, errors.New("no response found from context")
 	}
 	return res, nil
+}
+
+func sendError(err error, w http.ResponseWriter) {
+	if err != nil {
+
+		var reqFailer customerrors.ReqFailer
+		ok := errors.As(err, &reqFailer)
+		if ok {
+			http.Error(w, fmt.Sprintf("req failed with status: %s and error: %s", reqFailer.Status(), reqFailer.Error()), reqFailer.Code())
+			return
+		}
+
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 }

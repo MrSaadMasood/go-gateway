@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"gateway/internal/config"
 	"gateway/internal/controller"
@@ -9,8 +11,13 @@ import (
 	"gateway/internal/request"
 	"gateway/internal/services"
 	"gateway/internal/validate"
+	"log"
+	"net"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 )
 
 func main() {
@@ -22,13 +29,21 @@ func main() {
 	}
 
 	var configLoader config.Loader = config.NewMockConfigLoader()
+	c, err := configLoader.Load()
+	if err != nil {
+		panic(err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	var validator validate.Validator = validate.ReqValidator{}
 	var proxier proxy.Proxier = proxy.ReqProxy{}
 	var rateLimiter ratelimit.RateLimiter = ratelimit.ReqRateLimiter{}
 	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}
 
-	request.GetHandler(request.HandleRequestData{
-		ConfigLoader:            configLoader,
+	h, err := request.NewHandler(request.HandleRequestData{
+		Config:                  c,
 		Validator:               validator,
 		RateLimiter:             rateLimiter,
 		ServiceAccessController: serviceAccessController,
@@ -38,6 +53,35 @@ func main() {
 		},
 	})
 
+	if err != nil {
+		panic(err)
+	}
+
+	server := &http.Server{
+		ReadHeaderTimeout: c.Timeout,
+		ReadTimeout:       c.Timeout,
+		WriteTimeout:      c.Timeout,
+		Handler:           h,
+		BaseContext: func(l net.Listener) context.Context {
+			return ctx
+		},
+	}
+
+	go func() {
+		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("failed to close the server: %s", err.Error())
+		}
+		log.Fatalf("stopped server new connections")
+	}()
+
+	<-ctx.Done()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*c.Timeout)
+	defer cancel()
+
+	if err = server.Shutdown(ctx); !errors.Is(err, http.ErrServerClosed) {
+		log.Fatalf("failed to shutdown the server: %s", err.Error())
+	}
 }
 
 func readInternal(path string) {
