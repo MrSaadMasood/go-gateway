@@ -8,8 +8,8 @@ type reqPath string
 type redirectPath string
 
 type ServiceRateLimitOpts struct {
-	RateLimit            *int
-	RouteLevelRateLimits map[string]int
+	RateLimit            *float64
+	RouteLevelRateLimits map[string]float64
 }
 
 type ServiceBlockedIpsOpts struct {
@@ -83,7 +83,7 @@ func (sc *ServiceConfig) GetProxyTimeout(globalTimeout time.Duration) time.Durat
 type Config struct {
 	Port                     int
 	Timeout                  time.Duration
-	RateLimit                int
+	RateLimit                float64
 	ReqSizeLimit             int
 	Services                 []ServiceConfig
 	InternalOnlyServices     []string

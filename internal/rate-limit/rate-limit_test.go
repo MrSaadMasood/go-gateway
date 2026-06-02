@@ -71,8 +71,8 @@ func TestReqRateLimiter(t *testing.T) {
 				serviceConfigs := []config.ServiceConfig{
 					testService1,
 				}
-				globalRl := 120
-				cap, rate := calculateBucketData(globalRl)
+				globalRl := 120.0
+				cap, tokenCountToFill, rate := calculateBucketData(globalRl)
 				bufferedTime := time.After(rate + (5 * time.Second))
 				endpoint := "/test-service/v1"
 
@@ -122,7 +122,7 @@ func TestReqRateLimiter(t *testing.T) {
 			name: "should rate limit at service level",
 			t: func(t *testing.T) {
 
-				servcieRl := 120
+				servcieRl := 120.0
 				rateLimitOpts := config.ServiceRateLimitOpts{
 					RateLimit:            &servcieRl,
 					RouteLevelRateLimits: nil,
@@ -144,7 +144,7 @@ func TestReqRateLimiter(t *testing.T) {
 					testService1,
 				}
 
-				cap, rate := calculateBucketData(servcieRl)
+				cap, tokenCountToFill, rate := calculateBucketData(servcieRl)
 				bufferedTime := time.After(rate + (5 * time.Second))
 				endpoint := "/test-service/v1"
 
@@ -193,11 +193,11 @@ func TestReqRateLimiter(t *testing.T) {
 			name: "should rate limit at the route level",
 			t: func(t *testing.T) {
 
-				servcieRl := 500
-				routeRl := 120
+				servcieRl := 500.0
+				routeRl := 120.0
 				rateLimitOpts := config.ServiceRateLimitOpts{
 					RateLimit: &servcieRl,
-					RouteLevelRateLimits: map[string]int{
+					RouteLevelRateLimits: map[string]float64{
 						"/v1": routeRl,
 					},
 				}
@@ -219,8 +219,8 @@ func TestReqRateLimiter(t *testing.T) {
 					testService1,
 				}
 
-				globalRl := 1000
-				cap, rate := calculateBucketData(routeRl)
+				globalRl := 1000.0
+				cap, tokenCountToFill, rate := calculateBucketData(routeRl)
 				bufferedTime := time.After(rate + (5 * time.Second))
 
 				rrl := NewReqRateLimiter(context.Background(), globalRl, serviceConfigs)

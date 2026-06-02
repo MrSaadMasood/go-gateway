@@ -2,7 +2,6 @@ package request
 
 import (
 	"context"
-	"context"
 	"errors"
 	"gateway/internal/config"
 	"gateway/internal/controller"
@@ -159,7 +158,7 @@ func TestGetHandler(t *testing.T) {
 					return &mss
 				}
 
-				en routeLevelRateLimitErrdpoint := "/test-service/v1"
+				endpoint := "/test-service/v1"
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
 				responseBodyText := "hello world"
