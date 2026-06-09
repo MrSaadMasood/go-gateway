@@ -15,19 +15,21 @@ import (
 var globalRateLimitErr = errors.New("global rate limits exceeded")
 var serviceLevelRateLimitErr = errors.New("service level rate limits exceeded")
 var routeLevelRateLimitErr = errors.New("route level rate limit exceeded")
+var FALLBACK_RATE_LIMIT = 3000.0
 
 type token struct{}
 
-type tokenBucket struct {
+type tBucket struct {
+	rw        *sync.RWMutex
+	cancelCtx context.CancelFunc
+
 	tokens           []token
 	capacity         int
-	rw               *sync.RWMutex
 	tokenCountToFill int
-	cancelCtx        context.CancelFunc
 	lastUsed         time.Time
 }
 
-func (tb *tokenBucket) getToken() *token {
+func (tb *tBucket) getToken() *token {
 
 	tb.rw.Lock()
 	defer tb.rw.Unlock()
@@ -44,7 +46,7 @@ func (tb *tokenBucket) getToken() *token {
 
 }
 
-func (tb *tokenBucket) fill() {
+func (tb *tBucket) fill() {
 
 	tb.rw.Lock()
 	defer tb.rw.Unlock()
@@ -59,16 +61,31 @@ func (tb *tokenBucket) fill() {
 	tb.tokens = append(tb.tokens, make([]token, minTokensToFill)...)
 }
 
-func (tb *tokenBucket) destory() {
+func (tb *tBucket) isFull() bool {
+	tb.rw.RLock()
+	defer tb.rw.RUnlock()
+
+	return len(tb.tokens) >= tb.capacity
+}
+
+func (tb *tBucket) stop() {
 	tb.rw.Lock()
 	defer tb.rw.Unlock()
 
 	tb.cancelCtx()
-	tb = nil
+	tb.tokens = make([]token, 0)
+	tb.capacity = 0
+	tb.tokenCountToFill = 0
+	tb.lastUsed = time.Now()
 }
 
-func newTokenbucket(ctx context.Context, capacity, tokenCountToFill int, refillRate time.Duration, cancelCtx context.CancelFunc) *tokenBucket {
-	tb := tokenBucket{
+func (tb *tBucket) isSittingIdle() bool {
+	lastUserMinutes := time.Since(tb.lastUsed).Minutes()
+	return lastUserMinutes >= 5 && tb.isFull()
+}
+
+func newTokenbucket(ctx context.Context, capacity, tokenCountToFill int, refillRate time.Duration, cancelCtx context.CancelFunc) *tBucket {
+	tb := tBucket{
 		tokens:           make([]token, capacity),
 		capacity:         capacity,
 		rw:               &sync.RWMutex{},
@@ -97,27 +114,149 @@ type RateLimiter interface {
 	Limit(serviceName, path, ip string) error
 }
 
-type serviceTokenBucket struct {
-	*tokenBucket
-	urlTokenBucketMap map[string]*tokenBucket
-	createdAt         time.Time
+type serviceTB struct {
+	tBucket           *tBucket
+	urlTokenBucketMap map[string]*tBucket
+	rwmu              sync.RWMutex
 }
 
-type serviceBucketMap map[string]*serviceTokenBucket
+func (stb *serviceTB) untrackAllUrls() {
+
+	stb.rwmu.Lock()
+	defer stb.rwmu.Unlock()
+
+	for _, utb := range stb.urlTokenBucketMap {
+		utb.stop()
+	}
+	stb.urlTokenBucketMap = make(map[string]*tBucket)
+
+}
+
+func (stb *serviceTB) untrackUrl(url string) {
+
+	stb.rwmu.Lock()
+	defer stb.rwmu.Unlock()
+
+	utb, ok := stb.urlTokenBucketMap[url]
+	if !ok {
+		return
+	}
+
+	utb.stop()
+	delete(stb.urlTokenBucketMap, url)
+}
+
+func (stb *serviceTB) consumeServiceToken() *token {
+	return stb.tBucket.getToken()
+}
+
+func (stb *serviceTB) consumeUrlToken(path string) *token {
+
+	stb.rwmu.RLock()
+	defer stb.rwmu.RUnlock()
+
+	utb, shouldLimit := stb.urlTokenBucketMap[path]
+
+	if !shouldLimit {
+		return nil
+	}
+
+	return utb.getToken()
+
+}
+
+type serviceBucketsData struct {
+	rwmu  *sync.RWMutex
+	sbMap map[string]*serviceTB
+}
+
+func (sbm *serviceBucketsData) setServiceTB(serviceName string, st *serviceTB) {
+	sbm.rwmu.Lock()
+	defer sbm.rwmu.Unlock()
+
+	sbm.sbMap[serviceName] = st
+}
+
+func (sbm *serviceBucketsData) untrackAllSerices() {
+
+	sbm.rwmu.Lock()
+	defer sbm.rwmu.Unlock()
+
+	for _, stb := range sbm.sbMap {
+		stb.tBucket.stop()
+		stb.untrackAllUrls()
+	}
+
+	sbm.sbMap = make(map[string]*serviceTB)
+
+}
+
+func (sbm *serviceBucketsData) untrackService(serviceName string) {
+
+	sbm.rwmu.Lock()
+	defer sbm.rwmu.Unlock()
+
+	stb, ok := sbm.sbMap[serviceName]
+	if !ok {
+		return
+	}
+
+	stb.tBucket.stop()
+	for url, _ := range stb.urlTokenBucketMap {
+		stb.untrackUrl(url)
+	}
+
+	delete(sbm.sbMap, serviceName)
+}
 
 type buckets struct {
-	globalTB *tokenBucket
-	serviceBucketMap
-	createdAt time.Time
+	globalTB *tBucket
+	*serviceBucketsData
+	rwmu sync.RWMutex
+}
+
+func (b *buckets) consumeGlobalToken() *token {
+	if b.globalTB == nil {
+		return nil
+	}
+
+	t := b.globalTB.getToken()
+	return t
+}
+
+func (b *buckets) getServiceTb(serviceName string) *serviceTB {
+
+	b.rwmu.RLock()
+	defer b.rwmu.RUnlock()
+
+	sb, ok := b.serviceBucketsData.sbMap[serviceName]
+	if !ok || sb.tBucket == nil {
+		return nil
+	}
+
+	return sb
 }
 
 type ipTBucketMap map[string]*buckets
 
 type reqRateLimiter struct {
 	globalRateLimitPerMin float64
-	serviceConfigs        []config.ServiceConfig
+	serviceConfigsMap     map[string]config.ServiceConfig
 	ctx                   context.Context
 	ipTBucketMap          ipTBucketMap
+	rwmu                  sync.RWMutex
+}
+
+func (rrl *reqRateLimiter) getIpTBucket(ip string) *buckets {
+
+	rrl.rwmu.RLock()
+	defer rrl.rwmu.RUnlock()
+
+	b, ok := rrl.ipTBucketMap[ip]
+	if !ok {
+		return nil
+	}
+	return b
 }
 
 func (rrl *reqRateLimiter) Limit(serviceName, path, ip string) error {
@@ -126,80 +265,61 @@ func (rrl *reqRateLimiter) Limit(serviceName, path, ip string) error {
 		return customerrors.NewReqFailedErr(http.StatusTooManyRequests, enums.ReqRateLimitFailed, e)
 	}
 
-	tb, ok := rrl.ipTBucketMap[ip]
-	if !ok {
-		gtb, sbm := getBuckets(rrl.ctx, rrl.globalRateLimitPerMin, rrl.serviceConfigs)
-		tb = &buckets{globalTB: gtb, serviceBucketMap: sbm, createdAt: time.Now()}
-		rrl.ipTBucketMap[ip] = tb
+	gtb, sbm := rrl.getBuckets(ip, serviceName, path)
+	if !b {
+		b = &buckets{globalTB: gtb, serviceBucketsData: sbm, createdAt: time.Now(), rwmu: sync.RWMutex{}}
+		rrl.ipTBucketMap[ip] = b
 	}
 
-	gt := tb.globalTB
-	if gt.getToken() == nil {
+	if b.consumeGlobalToken() == nil {
 		return customErr(globalRateLimitErr)
 	}
 
-	sb, shouldLimit := tb.serviceBucketMap[serviceName]
-	if !shouldLimit || sb.tokenBucket == nil {
-		return nil
-	}
-
-	sbt := sb.tokenBucket
-	if sbt.getToken() == nil {
+	sb := b.getServiceTb(serviceName)
+	if sb == nil || sb.consumeServiceToken() == nil {
 		return customErr(serviceLevelRateLimitErr)
 	}
 
-	utb, shouldLimit := sb.urlTokenBucketMap[path]
-
-	if !shouldLimit {
-		return nil
-	}
-
-	if utb.getToken() == nil {
+	if sb.consumeUrlToken(path) == nil {
 		return customErr(routeLevelRateLimitErr)
 	}
 
 	return nil
 }
 
-func (rrl *reqRateLimiter) Clean() {
-	itbm := rrl.ipTBucketMap
-	CLEANUP_TIME_MINUTES := 5.0
+func (rrl *reqRateLimiter) UntrackIp(ip string) {
+	rrl.rwmu.Lock()
+	defer rrl.rwmu.Unlock()
 
-	for _, tb := range itbm {
-		if tb == nil {
-			continue
-		}
-
-		diff := time.Since(tb.createdAt).Minutes()
-
-		if diff > CLEANUP_TIME_MINUTES {
-			tb.globalTB = nil
-		}
-
-		for _, sbm := range tb.serviceBucketMap {
-
-			diff := time.Since(sbm.createdAt).Minutes()
-
-			if diff > CLEANUP_TIME_MINUTES {
-				tb.globalTB = nil
-			}
-
-		}
-
+	b, ok := rrl.ipTBucketMap[ip]
+	if !ok {
+		return
 	}
+
+	b.globalTB.stop()
+	b.serviceBucketsData.untrackAllSerices()
+
+	delete(rrl.ipTBucketMap, ip)
 }
 
 func NewReqRateLimiter(ctx context.Context, globalRateLimitPerMinute float64, services []config.ServiceConfig) *reqRateLimiter {
 
+	scm := make(map[string]config.ServiceConfig)
+
+	for _, s := range services {
+		scm[s.ServiceName] = s
+	}
+
 	rrl := reqRateLimiter{
 		ctx:                   ctx,
 		globalRateLimitPerMin: globalRateLimitPerMinute,
-		serviceConfigs:        services,
+		serviceConfigsMap:     scm,
 		ipTBucketMap:          make(ipTBucketMap),
+		rwmu:                  sync.RWMutex{},
 	}
 
+	ticker := time.NewTicker(5 * time.Minute)
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
 
 		for {
 			select {
@@ -211,108 +331,29 @@ func NewReqRateLimiter(ctx context.Context, globalRateLimitPerMinute float64, se
 
 	}()
 
-	return &rrl
-}
-
-// type servcieRefillData struct {
-// 	refillTime *int
-// 	url        map[string]int
-// }
-
-// type serviceRefillDataMap map[string]servcieRefillData
-// type bucketsRefillData struct {
-// 	globaRefillTime int
-// 	services        serviceRefillDataMap
-// }
-
-func getBuckets(ctx context.Context, globalRateLimit float64, services []config.ServiceConfig) (*tokenBucket, serviceBucketMap) {
-
-	cap, _, tokenCountToFill, rRate := calculateBucketData(globalRateLimit)
-	gCtx, cancel := context.WithCancel(ctx)
-	globalTb := newTokenbucket(gCtx, cap, tokenCountToFill, rRate, cancel)
-	sbm := make(serviceBucketMap)
-
-	for _, service := range services {
-
-		var stb *tokenBucket = nil
-		utbm := make(map[string]*tokenBucket)
-		sCtx, cancel := context.WithCancel(gCtx)
-
-		sro := service.RateLimitOpts
-		if sro == nil {
-			continue
-		}
-
-		srl := sro.RateLimit
-
-		if srl != nil {
-			cap, _, tokenCountToFill, rRate := calculateBucketData(*srl)
-			stb = newTokenbucket(sCtx, cap, tokenCountToFill, rRate, cancel)
-		}
-
-		if sro.RouteLevelRateLimits != nil {
-			for url, limit := range sro.RouteLevelRateLimits {
-				cap, _, tokenCountToFill, rRate := calculateBucketData(limit)
-				uCtx, cancel := context.WithCancel(sCtx)
-				srtb := newTokenbucket(uCtx, cap, tokenCountToFill, rRate, cancel)
-				utbm[url] = srtb
-			}
-		}
-
-		sbm[service.ServiceName] = &serviceTokenBucket{
-			tokenBucket:       stb,
-			urlTokenBucketMap: utbm,
-			createdAt:         time.Now(),
-		}
-		// brd.services[service.ServiceName] = srd
-
-	}
-
 	go func() {
 
-		ticker := time.NewTicker(5 * time.Minute)
-
-		destroyTBucket := func(tb *tokenBucket) {
-			tb.destory()
-		}
-
-		destoryServiceTBucket := func(stb *serviceTokenBucket) {
-			stb.destory()
-			for _, utb := range stb.urlTokenBucketMap {
-				destroyTBucket(utb)
-			}
-		}
-
-		enoughIdleTimePassed := func(t time.Time) bool {
-			min := time.Since(t).Minutes()
-			if min < 5 {
-				return false
-			}
-			return true
-		}
-
 		cleanupBuckets := func() {
+			for ip, b := range rrl.ipTBucketMap {
 
-			if len(globalTb.tokens) == globalTb.capacity && enoughIdleTimePassed(globalTb.lastUsed) {
-
-				globalTb.destory()
-				for _, stb := range sbm {
-					destoryServiceTBucket(stb)
+				if b.globalTB.isSittingIdle() {
+					rrl.UntrackIp(ip)
+					continue
 				}
 
-				return
-			}
+				for serviceName, stb := range b.serviceBucketsData.sbMap {
+					if stb.tBucket.isSittingIdle() {
+						b.serviceBucketsData.untrackService(serviceName)
+						continue
+					}
 
-			for _, stb := range sbm {
-				if len(stb.tokens) == stb.capacity && enoughIdleTimePassed(stb.lastUsed) {
-					destoryServiceTBucket(stb)
-				}
-
-				for k, utb := range stb.urlTokenBucketMap {
-					if len(utb.tokens) == utb.capacity && enoughIdleTimePassed(utb.lastUsed) {
-						delete(stb.urlTokenBucketMap, k)
+					for url, utb := range stb.urlTokenBucketMap {
+						if utb.isSittingIdle() {
+							stb.untrackUrl(url)
+						}
 					}
 				}
+
 			}
 		}
 
@@ -327,7 +368,94 @@ func getBuckets(ctx context.Context, globalRateLimit float64, services []config.
 
 	}()
 
-	return globalTb, sbm
+	return &rrl
+}
+
+func (rrl *reqRateLimiter) setIpTBucket(ip string, b *buckets) {
+
+	rrl.rwmu.Lock()
+	defer rrl.rwmu.Unlock()
+
+	rrl.ipTBucketMap[ip] = b
+}
+
+func (rrl *reqRateLimiter) getBuckets(ip, serviceName, path string) (*tBucket, *serviceBucketsData, error) {
+
+	sc, ok := rrl.serviceConfigsMap[serviceName]
+	if !ok {
+		return nil, nil, errors.New("invalid service name provided for rate limiting")
+	}
+
+	cap, _, tokenCountToFill, rRate := calculateBucketData(rrl.globalRateLimitPerMin)
+	gCtx, cancel := context.WithCancel(rrl.ctx)
+
+	b := rrl.getIpTBucket(ip)
+	var globalTB *tBucket
+	var sbd *serviceBucketsData = nil
+	defer func() {
+		b := &buckets{globalTB: globalTB, serviceBucketsData: sbd, rwmu: sync.RWMutex{}}
+		rrl.setIpTBucket(ip, b)
+	}()
+
+	if b == nil || b.globalTB == nil {
+		globalTB = newTokenbucket(gCtx, cap, tokenCountToFill, rRate, cancel)
+	} else {
+		globalTB = b.globalTB
+	}
+
+	if b == nil || b.serviceBucketsData == nil {
+		sbd = &serviceBucketsData{rwmu: &sync.RWMutex{}, sbMap: make(map[string]*serviceTB)}
+	} else {
+		sbd = b.serviceBucketsData
+	}
+
+	sro := sc.RateLimitOpts
+	if sro == nil {
+		return globalTB, nil, nil
+	}
+
+	sCtx, cancel := context.WithCancel(gCtx)
+	srl := sro.RateLimit
+	if srl == nil {
+		srl = &FALLBACK_RATE_LIMIT
+	}
+
+	cap, _, tokenCountToFill, rRate = calculateBucketData(*srl)
+	tb := newTokenbucket(sCtx, cap, tokenCountToFill, rRate, cancel)
+	stbd := b.getServiceTb(serviceName)
+
+	if stbd == nil {
+		stbd = &serviceTB{
+			tBucket:           tb,
+			urlTokenBucketMap: make(map[string]*tBucket),
+			rwmu:              sync.RWMutex{},
+		}
+	} else if stbd != nil && stbd.tBucket == nil {
+
+		stbd = &serviceTB{
+			tBucket:           tb,
+			urlTokenBucketMap: make(map[string]*tBucket),
+			rwmu:              sync.RWMutex{},
+		}
+	}
+
+	if sro.RouteLevelRateLimits != nil {
+		for url, limit := range sro.RouteLevelRateLimits {
+			cap, _, tokenCountToFill, rRate := calculateBucketData(limit)
+			uCtx, cancel := context.WithCancel(sCtx)
+			srtb := newTokenbucket(uCtx, cap, tokenCountToFill, rRate, cancel)
+			utbm[url] = srtb
+		}
+	}
+
+	sbd.sbMap[sc.ServiceName] = &serviceTB{
+		tBucket:           stbd,
+		urlTokenBucketMap: utbm,
+		rwmu:              sync.RWMutex{},
+	}
+
+	sbd.setServiceTB(serviceName, stbd)
+	return globalTB, sbd, nil
 }
 
 func calculateBucketData(reqLimitPerMin float64) (int, int, int, time.Duration) {
