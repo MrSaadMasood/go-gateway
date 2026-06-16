@@ -18,6 +18,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -37,18 +39,22 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	var validator validate.Validator = validate.ReqValidator{}
-	var proxier proxy.Proxier = proxy.ReqProxy{}
-	var rateLimiter ratelimit.RateLimiter = ratelimit.{}
-	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}
-
-
-	c, err := hrd.ConfigLoader.Load()
+	c, err = hrd.ConfigLoader.Load()
 	if err != nil {
 		panic("failed to load config")
 	}
+	scm := c.GetServiceConfigMap()
 
-	h, err := request.NewHandler(request.HandleRequestData{
+	var validator validate.Validator = validate.NewReqValidator(c.BlockedIps, c.AllowedOrigins, c.ReqSizeLimit, scm)
+	var proxier proxy.Proxier = proxy.ReqProxy{}
+	var rateLimiter ratelimit.RateLimiter = ratelimit.NewReqRateLimiter(ctx, c.RateLimit, scm)
+	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}
+
+	corsPolicy := cors.New(cors.Options{
+		AllowedOrigins: append([]string{}, c.AllowedOrigins...),
+	})
+
+	handler, err := request.NewHandler(request.HandleRequestData{
 		Config:                  c,
 		Validator:               validator,
 		RateLimiter:             rateLimiter,
@@ -67,7 +73,7 @@ func main() {
 		ReadHeaderTimeout: c.Timeout,
 		ReadTimeout:       c.Timeout,
 		WriteTimeout:      c.Timeout,
-		Handler:           h,
+		Handler:           corsPolicy.Handler(handler),
 		BaseContext: func(l net.Listener) context.Context {
 			return ctx
 		},

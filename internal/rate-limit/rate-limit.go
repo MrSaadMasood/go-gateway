@@ -90,13 +90,7 @@ func (rrl *reqRateLimiter) UntrackIp(ip string) {
 	delete(rrl.ipTBucketMap, ip)
 }
 
-func NewReqRateLimiter(ctx context.Context, globalRateLimitPerMinute float64, services []config.ServiceConfig) *reqRateLimiter {
-
-	scm := make(map[string]config.ServiceConfig)
-
-	for _, s := range services {
-		scm[s.ServiceName] = s
-	}
+func NewReqRateLimiter(ctx context.Context, globalRateLimitPerMinute float64, scm config.ServiceConfigMap) *reqRateLimiter {
 
 	rrl := reqRateLimiter{
 		ctx:                   ctx,

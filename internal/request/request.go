@@ -59,11 +59,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 				return nil, err
 			}
 
-			err = hrd.Validator.Validate(validate.ValidationOpts{
-				GlobalBlockedIps:   c.BlockedIps,
-				GlobalReqSizeLimit: c.ReqSizeLimit,
-				ServiceOpts:        service,
-			})
+			err = hrd.Validator.Validate(r, w, service.ServiceName)
 			if err != nil {
 				return nil, err
 			}

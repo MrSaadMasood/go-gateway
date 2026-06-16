@@ -7,6 +7,8 @@ import (
 type reqPath string
 type redirectPath string
 
+type ServiceConfigMap map[string]ServiceConfig
+
 type ServiceRateLimitOpts struct {
 	RateLimit            *float64
 	RouteLevelRateLimits map[string]float64
@@ -21,21 +23,21 @@ type ServiceReqOriginOpts struct {
 	AllowedOrigins []string
 }
 
-type ServiceReqAuthPolicyOpts struct {
+type ServiceBearerTokenPolicyOpts struct {
+	ShouldVerifyBearerToken   bool
 	SkipBearerTokenCheckPaths []string
 }
 
 type ServicePolicyOpts struct {
 	*ServiceBlockedIpsOpts
 	*ServiceReqOriginOpts
-	*ServiceReqAuthPolicyOpts
+	*ServiceBearerTokenPolicyOpts
 }
 
 type ServiceValidatorOpts struct {
-	RequiredBodyFields []string
-	RequiredHeaders    []string
-	RestrictedHeaders  []string
-	AllowedHeaders     []string
+	RequiredHeaders   []string
+	RestrictedHeaders []string
+	AllowedHeaders    []string
 }
 
 type ServiceRedirectOpts struct {
@@ -54,16 +56,20 @@ type ServiceDepricationOpts struct {
 	ObsoleteUrls      []reqPath
 }
 
+type ServcieAuthOpts struct {
+	ValidatorOpts   *ServiceValidatorOpts
+	DeprecationOpts *ServiceDepricationOpts
+	PolicyOpts      *ServicePolicyOpts
+	VersionOpts     *ServiceVersionOpts
+}
+
 type ServiceConfig struct {
-	ServiceName        string
-	ServiceUrl         string
-	Timeout            *time.Duration
-	RateLimitOpts      *ServiceRateLimitOpts
-	ValidatorOpts      *ServiceValidatorOpts
-	RedirectOpts       *ServiceRedirectOpts
-	UrlDepricationOpts *ServiceDepricationOpts
-	PolicyOpts         *ServicePolicyOpts
-	VersionOpts        *ServiceVersionOpts
+	ServiceName   string
+	ServiceUrl    string
+	Timeout       *time.Duration
+	RateLimitOpts *ServiceRateLimitOpts
+	RedirectOpts  *ServiceRedirectOpts
+	AuthOpts      ServcieAuthOpts
 }
 
 func (sc *ServiceConfig) GetProxyTimeout(globalTimeout time.Duration) time.Duration {
@@ -84,12 +90,25 @@ type Config struct {
 	Port                     int
 	Timeout                  time.Duration
 	RateLimit                float64
-	ReqSizeLimit             int
 	Services                 []ServiceConfig
 	InternalOnlyServices     []string
 	InternalOnlyServicesUrls []string
-	BlockedIps               []string
-	HealthCheckInterval      time.Duration
+
+	ReqSizeLimit   int
+	BlockedIps     []string
+	AllowedOrigins []string
+
+	HealthCheckInterval time.Duration
+}
+
+func (c *Config) GetServiceConfigMap() ServiceConfigMap {
+
+	scm := make(map[string]ServiceConfig)
+
+	for _, s := range c.Services {
+		scm[s.ServiceName] = s
+	}
+	return scm
 }
 
 type ConfigLoader struct{}

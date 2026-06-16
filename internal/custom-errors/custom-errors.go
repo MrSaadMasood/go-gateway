@@ -7,11 +7,14 @@ import (
 	"net/http"
 )
 
+var ResponseAlreadySentErr error = errors.New("response already sent")
+
 type ReqFailer interface {
 	Error() string
 	Code() int
 	Status() enums.RequestStatus
 }
+
 type reqFailedErr struct {
 	code     int
 	status   enums.RequestStatus
@@ -19,6 +22,7 @@ type reqFailedErr struct {
 }
 
 func NewReqFailedErr(code int, status enums.RequestStatus, err error) error {
+
 	if errors.Is(err, context.DeadlineExceeded) {
 		code = http.StatusRequestTimeout
 		status = enums.ReqTimeout
