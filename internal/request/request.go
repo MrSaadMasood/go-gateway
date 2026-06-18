@@ -111,7 +111,14 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 			timeoutCtx, cancel := context.WithTimeout(r.Context(), timeout)
 			defer cancel()
 
-			res, err := hrd.Proxier.Proxy(timeoutCtx, r.Method, r.Body, r.Header, r.URL, *service.RedirectOpts)
+			body, err := io.ReadAll(r.Body)
+
+			err = hrd.Validator.ValidateReqSize(len(body))
+			if err != nil {
+				return nil, err
+			}
+
+			res, err := hrd.Proxier.Proxy(timeoutCtx, r.Method, &body, r.Header, r.URL, *service.RedirectOpts)
 			if err != nil {
 				return nil, err
 			}

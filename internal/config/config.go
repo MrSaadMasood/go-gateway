@@ -1,10 +1,11 @@
 package config
 
 import (
+	"strings"
 	"time"
 )
 
-type reqPath string
+type ReqPath string
 type redirectPath string
 
 type ServiceConfigMap map[string]ServiceConfig
@@ -41,7 +42,7 @@ type ServiceValidatorOpts struct {
 }
 
 type ServiceRedirectOpts struct {
-	RouteLevelRedirection map[reqPath]redirectPath
+	RouteLevelRedirection map[ReqPath]redirectPath
 	ProxyReqTimeout       *time.Duration
 }
 
@@ -51,9 +52,9 @@ type ServiceVersionOpts struct {
 }
 
 type ServiceDepricationOpts struct {
-	DeprecatedUrls    []reqPath
+	DeprecatedUrls    []ReqPath
 	DeprecatedHeaders []string
-	ObsoleteUrls      []reqPath
+	ObsoleteUrls      []ReqPath
 }
 
 type ServcieAuthOpts struct {
@@ -70,6 +71,21 @@ type ServiceConfig struct {
 	RateLimitOpts *ServiceRateLimitOpts
 	RedirectOpts  *ServiceRedirectOpts
 	AuthOpts      ServcieAuthOpts
+}
+
+func NewServiceConfig(name, url string, timeout *time.Duration, rateLimitOpts *ServiceRateLimitOpts, redirectOpts *ServiceRedirectOpts, authOpts ServcieAuthOpts) (ServiceConfig, error) {
+	if !strings.HasPrefix(url, "/") {
+		return ServiceConfig{}, nil
+	}
+
+	return ServiceConfig{
+		ServiceName:   name,
+		ServiceUrl:    url,
+		Timeout:       timeout,
+		RateLimitOpts: rateLimitOpts,
+		RedirectOpts:  redirectOpts,
+		AuthOpts:      authOpts,
+	}, nil
 }
 
 func (sc *ServiceConfig) GetProxyTimeout(globalTimeout time.Duration) time.Duration {
@@ -94,9 +110,9 @@ type Config struct {
 	InternalOnlyServices     []string
 	InternalOnlyServicesUrls []string
 
-	ReqSizeLimit   int
-	BlockedIps     []string
-	AllowedOrigins []string
+	ReqSizeLimitInBytes int
+	BlockedIps          []string
+	AllowedOrigins      []string
 
 	HealthCheckInterval time.Duration
 }
@@ -118,7 +134,7 @@ func (ml *ConfigLoader) Load() (Config, error) {
 		Port:                     5000,
 		Timeout:                  10 * time.Second,
 		RateLimit:                30,
-		ReqSizeLimit:             5000,
+		ReqSizeLimitInBytes:      5000,
 		Services:                 nil,
 		InternalOnlyServices:     nil,
 		InternalOnlyServicesUrls: nil,

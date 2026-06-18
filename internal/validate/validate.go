@@ -8,8 +8,11 @@ import (
 	"gateway/internal/enums"
 	"net"
 	"net/http"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/cors"
 )
@@ -43,22 +46,23 @@ func (wrw *wrappedResponseWriter) WriteHeader(statusCode int) {
 
 type Validator interface {
 	Validate(req *http.Request, w http.ResponseWriter, serviceName string) error
+	ValidateReqSize(bodySizeInBytes int) error
 }
 
 type reqValidator struct {
-	GlobalBlockedIps     []string
-	GlobalAllowedOrigins []string
-	GlobalReqSizeLimit   int
-	ServiceConfigMap     config.ServiceConfigMap
+	GlobalBlockedIps          []string
+	GlobalAllowedOrigins      []string
+	GlobalReqSizeLimitInBytes int
+	ServiceConfigMap          config.ServiceConfigMap
 }
 
 func NewReqValidator(globalBlockedIps, globalAllowedOrigins []string, globalReqSizeLimit int, scm config.ServiceConfigMap) reqValidator {
 
 	return reqValidator{
-		GlobalBlockedIps:     globalBlockedIps,
-		GlobalAllowedOrigins: globalAllowedOrigins,
-		GlobalReqSizeLimit:   globalReqSizeLimit,
-		ServiceConfigMap:     scm,
+		GlobalBlockedIps:          globalBlockedIps,
+		GlobalAllowedOrigins:      globalAllowedOrigins,
+		GlobalReqSizeLimitInBytes: globalReqSizeLimit,
+		ServiceConfigMap:          scm,
 	}
 }
 
@@ -73,7 +77,7 @@ func (v reqValidator) validateIp(ip string, path string, sc *config.ServiceConfi
 	}
 
 	policyOpts := sc.AuthOpts.PolicyOpts
-	if policyOpts == nil {
+	if policyOpts == nil || policyOpts.ServiceBlockedIpsOpts == nil {
 		return nil
 	}
 
@@ -89,7 +93,12 @@ func (v reqValidator) validateIp(ip string, path string, sc *config.ServiceConfi
 	return nil
 }
 
-func (v reqValidator) validateCors(headers http.Header, sc *config.ServiceConfig) (http.HandlerFunc, error) {
+func (v reqValidator) addDeprecationHeaders(resHeaders http.Header, msg string) {
+	resHeaders.Add("Deprecation", "@"+strconv.Itoa(int(time.Now().Unix())))
+	resHeaders.Add("Warning", msg)
+}
+
+func (v reqValidator) validateCors(reqHeaders http.Header, resHeaders http.Header, sc *config.ServiceConfig) (http.HandlerFunc, error) {
 
 	validatorOpts := sc.AuthOpts.ValidatorOpts
 	if validatorOpts == nil {
@@ -97,16 +106,26 @@ func (v reqValidator) validateCors(headers http.Header, sc *config.ServiceConfig
 	}
 
 	for _, rh := range sc.AuthOpts.ValidatorOpts.RequiredHeaders {
-		_, exists := headers[rh]
+		_, exists := reqHeaders[rh]
 		if !exists {
 			return nil, v.fail(http.StatusBadRequest, fmt.Errorf("missing header: %s", rh))
 		}
 	}
 
 	for _, rh := range sc.AuthOpts.ValidatorOpts.RestrictedHeaders {
-		_, exists := headers[rh]
+		_, exists := reqHeaders[rh]
 		if exists {
 			return nil, v.fail(http.StatusBadRequest, fmt.Errorf("header not allowed: %s", rh))
+		}
+	}
+
+	deprecationOpts := sc.AuthOpts.DeprecationOpts
+	if deprecationOpts != nil {
+		for _, dh := range deprecationOpts.DeprecatedHeaders {
+			_, exists := reqHeaders[dh]
+			if exists {
+				v.addDeprecationHeaders(resHeaders, fmt.Sprintf("299 - The header: %s is deprecated. Please refer to the api documentation for latest supported headers", dh))
+			}
 		}
 	}
 
@@ -125,7 +144,10 @@ func (v reqValidator) validateCors(headers http.Header, sc *config.ServiceConfig
 
 func (v reqValidator) validateBearerToken(token string, path string, sc *config.ServiceConfig) error {
 	policyOpts := sc.AuthOpts.PolicyOpts
-	if policyOpts == nil || !policyOpts.ShouldVerifyBearerToken || slices.Contains(policyOpts.SkipBearerTokenCheckPaths, path) {
+	if policyOpts == nil || policyOpts.ServiceBearerTokenPolicyOpts == nil {
+		return nil
+	}
+	if !policyOpts.ShouldVerifyBearerToken || slices.Contains(policyOpts.SkipBearerTokenCheckPaths, path) {
 		return nil
 	}
 
@@ -140,15 +162,52 @@ func (v reqValidator) validateBearerToken(token string, path string, sc *config.
 	return nil
 }
 
-func (v reqValidator) handleDeprecation() error {
+func (v reqValidator) handleDeprecation(path string, resHeaders http.Header, sc *config.ServiceConfig) error {
+	deprecationOpts := sc.AuthOpts.DeprecationOpts
+	if deprecationOpts == nil {
+		return nil
+	}
+
+	for _, oUrl := range sc.AuthOpts.DeprecationOpts.ObsoleteUrls {
+		if strings.Contains(string(oUrl), path) {
+			return v.fail(http.StatusNotFound, errors.New("path not found"))
+		}
+	}
+
+	for _, dUrl := range sc.AuthOpts.DeprecationOpts.DeprecatedUrls {
+		if strings.Contains(string(dUrl), path) {
+			v.addDeprecationHeaders(resHeaders, "299 - The url is deprecated. Please refer to the api documentation for latest supported paths")
+		}
+	}
+
+	return nil
+
+}
+
+func (v reqValidator) validateVersion(serviceVersion string, sc *config.ServiceConfig) error {
+	versionOpts := sc.AuthOpts.VersionOpts
+	if versionOpts == nil {
+		return nil
+	}
+
+	for _, version := range sc.AuthOpts.VersionOpts.AvialableVersions {
+		if strings.Contains(version, serviceVersion) {
+			return nil
+		}
+	}
+
+	return v.fail(http.StatusNotFound, errors.New("the api version is not supported"))
+
+}
+
+func (v reqValidator) ValidateReqSize(bodySizeInBytes int) error {
+	if bodySizeInBytes > v.GlobalReqSizeLimitInBytes {
+		return v.fail(http.StatusUnprocessableEntity, errors.New("req body too large to process"))
+	}
 	return nil
 }
 
-func (v reqValidator) validateVersion() error {
-	return nil
-}
-
-func (v reqValidator) Validate(r *http.Request, w http.ResponseWriter, serviceName string) error {
+func (v reqValidator) Validate(w http.ResponseWriter, r *http.Request, serviceName string) error {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return v.fail(http.StatusBadRequest, errors.New("failed to get the ip address of the request"))
@@ -159,12 +218,28 @@ func (v reqValidator) Validate(r *http.Request, w http.ResponseWriter, serviceNa
 		return v.fail(http.StatusBadRequest, errors.New("service not supported"))
 	}
 
-	err = v.validateIp(host, r.URL.Path, &s)
+	splitted := strings.SplitN(r.URL.Path, "/", 4)
+	if len(splitted) < 3 {
+		return v.fail(http.StatusBadRequest, errors.New("req path not valid "))
+	}
+
+	m, err := regexp.Match(`^v\d+$`, []byte(splitted[2]))
+	if err != nil || m == false {
+		return v.fail(http.StatusBadRequest, errors.New("version verification failed"))
+	}
+
+	reqVersion := splitted[2]
+	var path string = "/"
+	if len(splitted) == 4 {
+		path = splitted[3]
+	}
+
+	err = v.validateIp(host, path, &s)
 	if err != nil {
 		return err
 	}
 
-	handlerFunc, err := v.validateCors(r.Header, &s)
+	handlerFunc, err := v.validateCors(r.Header, w.Header(), &s)
 	if err != nil {
 		return err
 	}
@@ -175,17 +250,17 @@ func (v reqValidator) Validate(r *http.Request, w http.ResponseWriter, serviceNa
 		return customerrors.ResponseAlreadySentErr
 	}
 
-	err = v.validateBearerToken(r.Header.Get("Authorization"), r.URL.Path, &s)
+	err = v.validateBearerToken(r.Header.Get("Authorization"), path, &s)
 	if err != nil {
 		return err
 	}
 
-	err = v.handleDeprecation()
+	err = v.handleDeprecation(path, w.Header(), &s)
 	if err != nil {
 		return err
 	}
 
-	err = v.validateVersion()
+	err = v.validateVersion(reqVersion, &s)
 	if err != nil {
 		return err
 	}

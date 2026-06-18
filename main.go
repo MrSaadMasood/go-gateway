@@ -45,7 +45,7 @@ func main() {
 	}
 	scm := c.GetServiceConfigMap()
 
-	var validator validate.Validator = validate.NewReqValidator(c.BlockedIps, c.AllowedOrigins, c.ReqSizeLimit, scm)
+	var validator validate.Validator = validate.NewReqValidator(c.BlockedIps, c.AllowedOrigins, c.ReqSizeLimitInBytes, scm)
 	var proxier proxy.Proxier = proxy.ReqProxy{}
 	var rateLimiter ratelimit.RateLimiter = ratelimit.NewReqRateLimiter(ctx, c.RateLimit, scm)
 	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}

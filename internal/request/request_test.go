@@ -110,10 +110,10 @@ func TestGetHandler(t *testing.T) {
 	}
 
 	c := config.Config{
-		Port:         5000,
-		Timeout:      10 * time.Second,
-		RateLimit:    10,
-		ReqSizeLimit: 3000,
+		Port:                5000,
+		Timeout:             10 * time.Second,
+		RateLimit:           10,
+		ReqSizeLimitInBytes: 3000,
 		Services: []config.ServiceConfig{
 			configService,
 		},
@@ -125,7 +125,7 @@ func TestGetHandler(t *testing.T) {
 
 	reqValidationOpts := validate.ValidationOpts{
 		GlobalBlockedIps:   c.BlockedIps,
-		GlobalReqSizeLimit: c.ReqSizeLimit,
+		GlobalReqSizeLimit: c.ReqSizeLimitInBytes,
 		ServiceOpts:        configService,
 	}
 
