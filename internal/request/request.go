@@ -3,6 +3,7 @@ package request
 import (
 	"context"
 	"errors"
+	"gateway/internal/common"
 	"gateway/internal/config"
 	"gateway/internal/controller"
 	"gateway/internal/enums"
@@ -36,7 +37,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 			if err != nil {
 				return nil, err
 			}
-			ctx := WithMappedService(r.Context(), service)
+			ctx := common.WithMappedService(r.Context(), service)
 			req := r.WithContext(ctx)
 			return req, nil
 		}
@@ -45,7 +46,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 	validateReqSuccess := func(c config.Config) ActionFunc {
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
 
-			service, err := MappedServiceFrom(r.Context())
+			service, err := common.MappedServiceFrom(r.Context())
 			if err != nil {
 				return nil, err
 			}
@@ -59,7 +60,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 				return nil, err
 			}
 
-			err = hrd.Validator.Validate(r, w, service.ServiceName)
+			err = hrd.Validator.Validate(w, r, service.ServiceName)
 			if err != nil {
 				return nil, err
 			}
@@ -73,7 +74,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 	rateLimitReqSuccess := func(c config.Config) ActionFunc {
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
 
-			service, err := MappedServiceFrom(r.Context())
+			service, err := common.MappedServiceFrom(r.Context())
 			if err != nil {
 				return nil, err
 			}
@@ -91,7 +92,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
 
-			service, err := MappedServiceFrom(r.Context())
+			service, err := common.MappedServiceFrom(r.Context())
 			if err != nil {
 				return nil, err
 			}
@@ -148,7 +149,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 
 	failRequestWithStatus := func(s enums.RequestStatus) ActionFunc {
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
-			ctx := WithReqStatus(r.Context(), s)
+			ctx := common.WithReqStatus(r.Context(), s)
 			return r.WithContext(ctx), nil
 		}
 	}

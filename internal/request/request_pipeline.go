@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gateway/internal/config"
+	"gateway/internal/common"
 	customerrors "gateway/internal/custom-errors"
 	"gateway/internal/enums"
 	"gateway/internal/types"
@@ -102,7 +102,7 @@ func NewReqStateMachine(kam reqTransitionKeyActionMap) reqStateMachine {
 func (m *reqStateMachine) initializeRequest(f types.HandlerFuncWithError) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		newReq := r.WithContext(WithReqStatus(ctx, enums.ReqInitialized))
+		newReq := r.WithContext(common.WithReqStatus(ctx, enums.ReqInitialized))
 		err := f(w, newReq)
 		sendError(err, w)
 	})
@@ -181,7 +181,7 @@ func (m *reqStateMachine) sendError(err error, w http.ResponseWriter) {
 func (m *reqStateMachine) fire(w http.ResponseWriter, r *http.Request, successEvent enums.ReqEvent, failureState enums.RequestStatus) (*http.Request, error) {
 	ctx := r.Context()
 
-	from, err := StatusFrom(ctx)
+	from, err := common.StatusFrom(ctx)
 	if err != nil {
 		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, failureState, err)
 	}
@@ -211,7 +211,7 @@ func (m *reqStateMachine) fire(w http.ResponseWriter, r *http.Request, successEv
 
 func (m *reqStateMachine) updateRequestStatus(r *http.Request, to enums.RequestStatus) *http.Request {
 	ctx := r.Context()
-	newReq := r.WithContext(WithReqStatus(ctx, to))
+	newReq := r.WithContext(common.WithReqStatus(ctx, to))
 	return newReq
 }
 
@@ -220,30 +220,6 @@ func GenerateActionKey(event enums.ReqEvent, from enums.RequestStatus) reqEventS
 		event: event,
 		from:  from,
 	}
-}
-
-func WithReqStatus(ctx context.Context, status enums.RequestStatus) context.Context {
-	return context.WithValue(ctx, "status", status)
-}
-
-func StatusFrom(ctx context.Context) (enums.RequestStatus, error) {
-	s, ok := ctx.Value("status").(enums.RequestStatus)
-	if !ok {
-		return "", errors.New("status not found from context")
-	}
-	return s, nil
-}
-
-func WithMappedService(ctx context.Context, s config.ServiceConfig) context.Context {
-	return context.WithValue(ctx, "mapped-service", s)
-}
-
-func MappedServiceFrom(ctx context.Context) (config.ServiceConfig, error) {
-	s, ok := ctx.Value("mapped-service").(config.ServiceConfig)
-	if !ok {
-		return config.ServiceConfig{}, errors.New("req not mapped with service")
-	}
-	return s, nil
 }
 
 func WithProxyRes(ctx context.Context, res *http.Response) context.Context {

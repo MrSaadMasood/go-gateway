@@ -45,7 +45,7 @@ func (wrw *wrappedResponseWriter) WriteHeader(statusCode int) {
 }
 
 type Validator interface {
-	Validate(req *http.Request, w http.ResponseWriter, serviceName string) error
+	Validate(w http.ResponseWriter, req *http.Request, serviceName string) error
 	ValidateReqSize(bodySizeInBytes int) error
 }
 

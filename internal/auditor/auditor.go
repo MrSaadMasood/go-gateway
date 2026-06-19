@@ -1,8 +1,13 @@
 package auditor
 
 import (
+	"context"
+	"gateway/internal/common"
 	"gateway/internal/enums"
+	"net/http"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type FailureData struct {
@@ -56,4 +61,56 @@ type LogData struct {
 
 type Auditor interface {
 	Log(LogData)
+}
+
+type reqAuditor struct {
+	ctx           context.Context
+	reqLogDataMap map[string]*LogData
+}
+
+func NewHandler(ctx context.Context, h http.Handler) http.Handler {
+	ra := reqAuditor{ctx, make(map[string]*LogData)}
+	logChan := make(chan *LogData, 5000)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		reqId := uuid.New().String()
+		ra.reqLogDataMap[reqId] = &LogData{
+			Source:    "Auditor",
+			CreatedAt: time.Now(),
+			Data:      LogPayload{},
+		}
+
+		h.ServeHTTP(w, r)
+
+		logData, ok := ra.reqLogDataMap[reqId]
+		if ok {
+			sc, err := common.MappedServiceFrom(r.Context())
+			mappedService := ""
+			if err != nil {
+				mappedService = sc.ServiceName
+			}
+
+			status, _ := common.StatusFrom(r.Context())
+
+			LogReqData{
+				ReqId:                    reqId,
+				ReqMethod:                r.Method,
+				ReqPayload:               r.Body,
+				ReqHeaders:               r.Header,
+				ReqPath:                  r.URL.Path,
+				TargetBackendServiceName: mappedService,
+				ReqStatus:                status,
+			}
+		}
+	})
+}
+
+func (a reqAuditor) Log(w http.ResponseWriter, r *http.Request, buffer chan<- *LogData) {
+	var ld *LogData
+	buffer <- ld
+}
+
+func (a reqAuditor) Flush() {
+
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gateway/internal/auditor"
 	"gateway/internal/config"
 	"gateway/internal/controller"
 	"gateway/internal/proxy"
@@ -69,11 +70,14 @@ func main() {
 		panic(err)
 	}
 
+	handler = corsPolicy.Handler(handler)
+	handler = auditor.NewHandler(handler)
+
 	server := &http.Server{
 		ReadHeaderTimeout: c.Timeout,
 		ReadTimeout:       c.Timeout,
 		WriteTimeout:      c.Timeout,
-		Handler:           corsPolicy.Handler(handler),
+		Handler:           handler,
 		BaseContext: func(l net.Listener) context.Context {
 			return ctx
 		},
