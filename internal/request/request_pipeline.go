@@ -7,6 +7,7 @@ import (
 	"gateway/internal/common"
 	customerrors "gateway/internal/custom-errors"
 	"gateway/internal/enums"
+	"gateway/internal/log"
 	"gateway/internal/types"
 	"net/http"
 	"slices"
@@ -104,7 +105,7 @@ func (m *reqStateMachine) initializeRequest(f types.HandlerFuncWithError) http.H
 		ctx := r.Context()
 		newReq := r.WithContext(common.WithReqStatus(ctx, enums.ReqInitialized))
 		err := f(w, newReq)
-		sendError(err, w)
+		sendError(err, w, r)
 	})
 }
 
@@ -156,25 +157,8 @@ func (m *reqStateMachine) withWrapper(f types.HandlerFuncWithError, event enums.
 func (m *reqStateMachine) customErrorHandlerM(f types.HandlerFuncWithError) types.HandlerFuncWithError {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		err := f(w, r)
-		sendError(err, w)
+		sendError(err, w, r)
 		return nil
-	}
-}
-
-func (m *reqStateMachine) sendError(err error, w http.ResponseWriter) {
-	if errors.Is(err, customerrors.ResponseAlreadySentErr) {
-		return
-	}
-
-	if err != nil {
-		var reqFailer customerrors.ReqFailer
-		ok := errors.As(err, &reqFailer)
-		if ok {
-			http.Error(w, fmt.Sprintf("req failed with status: %s and error: %s", reqFailer.Status(), reqFailer.Error()), reqFailer.Code())
-			return
-		}
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
 	}
 }
 
@@ -234,12 +218,30 @@ func ProxyResFrom(ctx context.Context) (*http.Response, error) {
 	return res, nil
 }
 
-func sendError(err error, w http.ResponseWriter) {
+func sendError(err error, w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 
+		ld, logDataErr := common.LogDataFrom(r.Context())
+		fd := log.FailureData{
+			Reason: err.Error(),
+		}
+		var reqStatus enums.RequestStatus
 		var reqFailer customerrors.ReqFailer
+
+		defer func() {
+			if logDataErr != nil {
+				return
+			}
+			ld.SetFailure(fd)
+			ld.SetFinalReqStatus(reqStatus)
+		}()
+
 		ok := errors.As(err, &reqFailer)
 		if ok {
+
+			fd.Reason = reqFailer.Error()
+			reqStatus = reqFailer.Status()
+
 			http.Error(w, fmt.Sprintf("req failed with status: %s and error: %s", reqFailer.Status(), reqFailer.Error()), reqFailer.Code())
 			return
 		}

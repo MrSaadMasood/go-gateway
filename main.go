@@ -11,6 +11,8 @@ import (
 	ratelimit "gateway/internal/rate-limit"
 	"gateway/internal/request"
 	"gateway/internal/services"
+	"gateway/internal/store"
+	"gateway/internal/telemeter"
 	"gateway/internal/validate"
 	"log"
 	"net"
@@ -40,17 +42,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	c, err = hrd.ConfigLoader.Load()
+	c, err = configLoader.Load()
 	if err != nil {
-		panic("failed to load config")
+		panic(err)
 	}
-	scm := c.GetServiceConfigMap()
 
+	scm := c.GetServiceConfigMap()
 	var validator validate.Validator = validate.NewReqValidator(c.BlockedIps, c.AllowedOrigins, c.ReqSizeLimitInBytes, scm)
 	var proxier proxy.Proxier = proxy.ReqProxy{}
 	var rateLimiter ratelimit.RateLimiter = ratelimit.NewReqRateLimiter(ctx, c.RateLimit, scm)
 	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}
-
+	var requestTelemeter telemeter.Recorder = telemeter.NewReqTelemeter(scm)
+	var storer store.Storer = store.NewStorage(ctx)
 	corsPolicy := cors.New(cors.Options{
 		AllowedOrigins: append([]string{}, c.AllowedOrigins...),
 	})
@@ -61,6 +64,7 @@ func main() {
 		RateLimiter:             rateLimiter,
 		ServiceAccessController: serviceAccessController,
 		Proxier:                 proxier,
+		Telemter:                requestTelemeter,
 		GetService: func(scs []config.ServiceConfig) services.Storer {
 			return services.NewMockServiceStore(scs)
 		},
@@ -71,13 +75,17 @@ func main() {
 	}
 
 	handler = corsPolicy.Handler(handler)
-	handler = auditor.NewHandler(handler)
+	handler = auditor.NewHandler(ctx, requestTelemeter, storer, handler)
+
+	mux := http.NewServeMux()
+	mux.Handle("GET /", handler)
+	mux.Handle("GET /logs", storer.ReadLogsHandler())
 
 	server := &http.Server{
 		ReadHeaderTimeout: c.Timeout,
 		ReadTimeout:       c.Timeout,
 		WriteTimeout:      c.Timeout,
-		Handler:           handler,
+		Handler:           mux,
 		BaseContext: func(l net.Listener) context.Context {
 			return ctx
 		},

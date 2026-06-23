@@ -7,9 +7,11 @@ import (
 	"gateway/internal/config"
 	"gateway/internal/controller"
 	"gateway/internal/enums"
+	"gateway/internal/log"
 	"gateway/internal/proxy"
 	ratelimit "gateway/internal/rate-limit"
 	"gateway/internal/services"
+	"gateway/internal/telemeter"
 	"gateway/internal/validate"
 	"io"
 	"net/http"
@@ -23,6 +25,7 @@ type HandleRequestData struct {
 	Proxier                 proxy.Proxier
 	RateLimiter             ratelimit.RateLimiter
 	ServiceAccessController controller.ServiceAccessController
+	Telemter                telemeter.Recorder
 	GetService              services.GetServiceFunc
 }
 
@@ -37,8 +40,20 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 			if err != nil {
 				return nil, err
 			}
+
+			hrd.Telemter.Record(service.ServiceName, r.URL.Path)
 			ctx := common.WithMappedService(r.Context(), service)
 			req := r.WithContext(ctx)
+
+			ld, err := common.LogDataFrom(r.Context())
+			if err != nil {
+				return nil, err
+			}
+			ld.SetServiceStatusData(log.ServiceStatusData{
+				ServiceName: service.ServiceName,
+				Status:      enums.ServiceAvailable,
+			})
+
 			return req, nil
 		}
 	}
@@ -113,6 +128,16 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 			defer cancel()
 
 			body, err := io.ReadAll(r.Body)
+			defer r.Body.Close()
+			if err != nil {
+				return nil, err
+			}
+
+			ld, err := common.LogDataFrom(r.Context())
+			if err != nil {
+				return nil, err
+			}
+			ld.SetReqPayload(&body)
 
 			err = hrd.Validator.ValidateReqSize(len(body))
 			if err != nil {
@@ -131,20 +156,43 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 		}
 	}
 
-	var sendResponse ActionFunc = func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
-		res, err := ProxyResFrom(r.Context())
-		if err != nil {
-			return nil, err
-		}
+	var sendResponse = func(reqStatus enums.RequestStatus) ActionFunc {
+		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
+			res, err := ProxyResFrom(r.Context())
+			if err != nil {
+				return nil, err
+			}
 
-		for k, v := range res.Header {
-			w.Header().Set(k, strings.Join(v, ","))
-		}
-		body, err := io.ReadAll(res.Body)
-		w.WriteHeader(res.StatusCode)
-		w.Write(body)
+			for k, v := range res.Header {
+				w.Header().Set(k, strings.Join(v, ","))
+			}
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				return nil, err
+			}
 
-		return r, nil
+			ld, err := common.LogDataFrom(r.Context())
+			if err != nil {
+				return nil, err
+			}
+
+			t, err := time.Parse(time.RFC3339, ld.CreatedAt)
+			if err != nil {
+				return nil, err
+			}
+
+			ld.SetResponse(log.LogResData{
+				ResPayload: string(body),
+				ResHeaders: w.Header(),
+				ResTime:    time.Until(t).Seconds(),
+			})
+			ld.SetFinalReqStatus(reqStatus)
+
+			w.WriteHeader(res.StatusCode)
+			w.Write(body)
+
+			return r, nil
+		}
 	}
 
 	failRequestWithStatus := func(s enums.RequestStatus) ActionFunc {
@@ -159,7 +207,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 		{event: enums.ValidationSuccessReqEvent, from: enums.ReqServiceMapSuccess}: validateReqSuccess(c),
 		{event: enums.RateLimitSuccessReqEvent, from: enums.ReqValidationSuccess}:  rateLimitReqSuccess(c),
 		{event: enums.ProxySuccessReqEvent, from: enums.ReqRateLimitSuccess}:       proxyReqSuccess(c),
-		{event: enums.ReqSuccessEvent, from: enums.ReqProxySuccess}:                sendResponse,
+		{event: enums.ReqSuccessEvent, from: enums.ReqProxySuccess}:                sendResponse(enums.ReqSuccess),
 
 		{event: enums.MapFailedReqEvent, from: enums.ReqInitialized}:              failRequestWithStatus(enums.ReqServiceMapFailed),
 		{event: enums.ValidationFailedReqEvent, from: enums.ReqServiceMapSuccess}: failRequestWithStatus(enums.ReqValidationFailed),
@@ -200,7 +248,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				service, err := storer.Map(r.URL.Path)
 				if err != nil {
-					sendError(err, w)
+					sendError(err, w, r)
 					return
 				}
 				ctx, cancel := context.WithTimeout(r.Context(), service.GetProxyTimeout(c.Timeout))

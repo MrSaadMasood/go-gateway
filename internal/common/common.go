@@ -5,6 +5,7 @@ import (
 	"errors"
 	"gateway/internal/config"
 	"gateway/internal/enums"
+	"gateway/internal/log"
 )
 
 func WithMappedService(ctx context.Context, s config.ServiceConfig) context.Context {
@@ -29,4 +30,16 @@ func StatusFrom(ctx context.Context) (enums.RequestStatus, error) {
 		return "", errors.New("status not found from context")
 	}
 	return s, nil
+}
+
+func WithLogData(ctx context.Context, ld *log.LogData) context.Context {
+	return context.WithValue(ctx, "log-data", ld)
+}
+
+func LogDataFrom(ctx context.Context) (*log.LogData, error) {
+	ld, ok := ctx.Value("log-data").(*log.LogData)
+	if !ok {
+		return nil, errors.New("no log data found")
+	}
+	return ld, nil
 }
