@@ -15,7 +15,6 @@ import (
 
 type Storer interface {
 	StoreLogs([]log.LogData) error
-	readLogs() (*[]log.LogData, error)
 	ReadLogsHandler() http.Handler
 }
 

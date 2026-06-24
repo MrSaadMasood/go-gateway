@@ -2,6 +2,7 @@ package log
 
 import (
 	"gateway/internal/enums"
+	logger "log"
 	"net/http"
 	"time"
 
@@ -86,6 +87,7 @@ func (ld *LogData) SetServiceTrafficData(sstd ServiceTrafficData) {
 func (ld *LogData) SetReqPayload(p *[]byte) {
 
 	if ld.Data.LogReqData == nil || p == nil {
+		logger.Println("Failed to set req payload for auditor: ", string(*p), "the log data: ", ld.Data)
 		return
 	}
 
@@ -94,12 +96,11 @@ func (ld *LogData) SetReqPayload(p *[]byte) {
 
 func (ld *LogData) SetFinalReqStatus(s enums.RequestStatus) {
 	if ld.Data.LogReqData == nil {
+		logger.Println("Failed to set req payload for auditor the log data: ", ld.Data)
 		return
 	}
+
 	ld.Data.LogReqData.ReqStatus = s
-	if ld.Data.ServiceTrafficData == nil {
-		return
-	}
 
 }
 

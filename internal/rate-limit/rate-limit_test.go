@@ -70,15 +70,14 @@ func TestReqRateLimiter(t *testing.T) {
 					},
 				}
 
-				serviceConfigs := []config.ServiceConfig{
-					testService1,
-				}
 				globalRl := 1.0
 				cap, _, _, rate := calculateBucketData(globalRl)
 				bufferedTime := time.After(rate + (5 * time.Second))
 				endpoint := "/test-service/v1"
 
-				rrl := NewReqRateLimiter(context.Background(), globalRl, serviceConfigs)
+				rrl := NewReqRateLimiter(context.Background(), globalRl, config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
+				})
 
 				for range cap {
 					rrl.Limit(testService1.ServiceName, endpoint, ip)

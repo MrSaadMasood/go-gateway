@@ -56,7 +56,7 @@ func (rrl *reqRateLimiter) Limit(serviceName, path, ip string) error {
 	}
 
 	if b == nil {
-		errors.New("failed to get rate limits")
+		return errors.New("failed to get rate limits")
 	}
 
 	if b.consumeGlobalToken() == nil {

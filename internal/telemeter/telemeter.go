@@ -13,26 +13,26 @@ type Recorder interface {
 
 type requestTelemeter struct {
 	serviceMap map[string]struct {
-		traffic *atomic.Uint64
-		routes  map[string]*atomic.Uint64
+		traffic   *atomic.Uint64
+		routesMap map[string]*atomic.Uint64
 	}
 }
 
 func NewReqTelemeter(scm config.ServiceConfigMap) *requestTelemeter {
 	rt := requestTelemeter{
 		serviceMap: make(map[string]struct {
-			traffic *atomic.Uint64
-			routes  map[string]*atomic.Uint64
+			traffic   *atomic.Uint64
+			routesMap map[string]*atomic.Uint64
 		}),
 	}
 
 	for _, s := range scm {
 		rt.serviceMap[s.ServiceName] = struct {
-			traffic *atomic.Uint64
-			routes  map[string]*atomic.Uint64
+			traffic   *atomic.Uint64
+			routesMap map[string]*atomic.Uint64
 		}{
-			traffic: &atomic.Uint64{},
-			routes:  make(map[string]*atomic.Uint64),
+			traffic:   &atomic.Uint64{},
+			routesMap: make(map[string]*atomic.Uint64),
 		}
 
 	}
@@ -46,10 +46,10 @@ func (rt *requestTelemeter) Record(serviceName, path string) {
 		return
 	}
 
-	routeTraffic, ok := st.routes[path]
+	routeTraffic, ok := st.routesMap[path]
 	if !ok {
 		routeTraffic = &atomic.Uint64{}
-		st.routes[path] = routeTraffic
+		st.routesMap[path] = routeTraffic
 	}
 
 	st.traffic.Add(1)
@@ -63,7 +63,7 @@ func (rt *requestTelemeter) GetTelemetery(serviceName, path string) (uint64, uin
 		return 0, 0, errors.New("service not found for telemetric data")
 	}
 
-	routeTraffic, ok := st.routes[path]
+	routeTraffic, ok := st.routesMap[path]
 	if !ok {
 		return 0, 0, errors.New("route not found for telemetric data")
 	}

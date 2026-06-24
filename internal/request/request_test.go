@@ -7,13 +7,15 @@ import (
 	"gateway/internal/controller"
 	customerrors "gateway/internal/custom-errors"
 	"gateway/internal/enums"
+	"gateway/internal/mocks"
+	"gateway/internal/proxy"
 	ratelimit "gateway/internal/rate-limit"
 	"gateway/internal/services"
+	"gateway/internal/telemeter"
 	"gateway/internal/validate"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -21,52 +23,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
-
-type mockConfig struct {
-	mock.Mock
-}
-
-func (mc *mockConfig) Load() (config.Config, error) {
-	args := mc.Called()
-	return args.Get(0).(config.Config), nil
-}
-
-type mockValidator struct {
-	mock.Mock
-}
-
-func (mv *mockValidator) Validate(opts validate.ValidationOpts) error {
-	args := mv.Called(opts)
-	return args.Error(0)
-}
-
-type mockProxier struct{ mock.Mock }
-
-func (mp *mockProxier) Proxy(ctx context.Context, method string, body io.ReadCloser, h http.Header, url *url.URL, ro config.ServiceRedirectOpts) (http.Response, error) {
-	args := mp.Called(ctx, method, body, h, url, ro)
-	return args.Get(0).(http.Response), args.Error(1)
-}
-
-type mockRateLimiter struct{ mock.Mock }
-
-func (mrl *mockRateLimiter) Limit(serviceName, path string) error {
-	args := mrl.Called(serviceName, path)
-	return args.Error(0)
-}
-
-type mockServiceAccessController struct{ mock.Mock }
-
-func (msc *mockServiceAccessController) Control(aco controller.AccessControllerOpts) error {
-	args := msc.Called(aco)
-	return args.Error(0)
-}
-
-type mockServiceStore struct{ mock.Mock }
-
-func (mss *mockServiceStore) Map(path string) (config.ServiceConfig, error) {
-	args := mss.Called(path)
-	return args.Get(0).(config.ServiceConfig), nil
-}
 
 func TestGetHandler(t *testing.T) {
 
@@ -80,13 +36,12 @@ func TestGetHandler(t *testing.T) {
 		RouteLevelRateLimits: nil,
 	}
 	validatorOpts := config.ServiceValidatorOpts{
-		RequiredBodyFields: nil,
-		RequiredHeaders:    nil,
-		RestrictedHeaders:  nil,
-		AllowedHeaders:     nil,
+		RequiredHeaders:   nil,
+		RestrictedHeaders: nil,
+		AllowedHeaders:    nil,
 	}
 	redirectOpts := config.ServiceRedirectOpts{RouteLevelRedirection: nil, ProxyReqTimeout: sampleTimeout(2)}
-	urlDeprecationOpts := config.ServiceDepricationOpts{
+	deprecationOpts := config.ServiceDepricationOpts{
 		DeprecatedUrls:    nil,
 		DeprecatedHeaders: nil,
 		ObsoleteUrls:      nil,
@@ -98,15 +53,17 @@ func TestGetHandler(t *testing.T) {
 	}
 
 	configService := config.ServiceConfig{
-		ServiceName:        "test-service",
-		ServiceUrl:         "/test-service",
-		Timeout:            sampleTimeout(4),
-		RateLimitOpts:      &rateLimitOpts,
-		ValidatorOpts:      &validatorOpts,
-		RedirectOpts:       &redirectOpts,
-		UrlDepricationOpts: &urlDeprecationOpts,
-		PolicyOpts:         &policyOpts,
-		VersionOpts:        &versionOpts,
+		ServiceName:   "test-service",
+		ServiceUrl:    "/test-service",
+		Timeout:       sampleTimeout(4),
+		RateLimitOpts: &rateLimitOpts,
+		RedirectOpts:  &redirectOpts,
+		AuthOpts: config.ServcieAuthOpts{
+			ValidatorOpts:   &validatorOpts,
+			PolicyOpts:      &policyOpts,
+			VersionOpts:     &versionOpts,
+			DeprecationOpts: &deprecationOpts,
+		},
 	}
 
 	c := config.Config{
@@ -123,12 +80,6 @@ func TestGetHandler(t *testing.T) {
 		HealthCheckInterval:      10 * time.Second,
 	}
 
-	reqValidationOpts := validate.ValidationOpts{
-		GlobalBlockedIps:   c.BlockedIps,
-		GlobalReqSizeLimit: c.ReqSizeLimitInBytes,
-		ServiceOpts:        configService,
-	}
-
 	reqRateLimiterOpts := ratelimit.NewReqRateLimiter(context.Background())
 
 	reqAccessControllerOpts := func(path string) controller.AccessControllerOpts {
@@ -139,6 +90,7 @@ func TestGetHandler(t *testing.T) {
 			ReqPath:            path,
 		}
 	}
+	ip := "0.0.0.0"
 
 	testTables := []struct {
 		name string
@@ -148,14 +100,23 @@ func TestGetHandler(t *testing.T) {
 			name: "request should successfully move through the pipeline and return a response",
 			t: func(t *testing.T) {
 
-				configLoader := mockConfig{}
-				validtor := mockValidator{}
-				proxier := mockProxier{}
-				rateLimiter := mockRateLimiter{}
-				serviceAccessController := mockServiceAccessController{}
-				mss := mockServiceStore{}
+				mc := new(mocks.MockConfig)
+				mv := new(mocks.MockValidator)
+				mp := new(mocks.MockProxier)
+				mrl := new(mocks.MockRateLimiter)
+				msac := new(mocks.MockServiceAccessController)
+				mss := new(mocks.MockServiceStore)
+				mt := new(mocks.MockTelemeter)
+
+				var configLoader config.Loader = mc
+				var validtor validate.Validator = mv
+				var proxier proxy.Proxier = mp
+				var rateLimiter ratelimit.RateLimiter = mrl
+				var serviceAccessController controller.ServiceAccessController = msac
+				var mockServcieStorer services.Storer = mss
+				var mockRecorder telemeter.Recorder = mt
 				var getServiceFunc services.GetServiceFunc = func(scs []config.ServiceConfig) services.Storer {
-					return &mss
+					return mockServcieStorer
 				}
 
 				endpoint := "/test-service/v1"
@@ -168,25 +129,31 @@ func TestGetHandler(t *testing.T) {
 					Header: http.Header{
 						"Content-Type": []string{"text/plain"},
 					}}
+				w := httptest.NewRecorder()
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+				defer w.Result().Body.Close()
 
-				configLoader.On("Load").Return(c, nil)
+				mc.On("Load").Return(c, nil)
 				mss.On("Map", endpoint).Return(configService)
-				serviceAccessController.On("Control", reqAccessControllerOpts(r.URL.Path)).Return(nil)
-				validtor.On("Validate", reqValidationOpts).Return(nil)
-				rateLimiter.On("Limit", reqRateLimiterOpts).Return(nil)
-				proxier.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool {
+				msac.On("Control", reqAccessControllerOpts(r.URL.Path)).Return(nil)
+				mv.On("Validate", w, r, configService.ServiceName).Return(nil)
+				mrl.On("Limit", configService.ServiceName, r.URL.Path, ip).Return(nil)
+				mp.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool {
 					return true
-				}), r.Method, r.Body, r.Header, r.URL, redirectOpts).Return(resp, nil)
+				}), r.Method, &body, r.Header, r.URL, redirectOpts).Return(resp, nil)
+
 				c, err := configLoader.Load()
 				assert.NoError(t, err)
 
 				hrd := HandleRequestData{
 					Config:                  c,
-					Validator:               &validtor,
-					Proxier:                 &proxier,
-					RateLimiter:             &rateLimiter,
-					ServiceAccessController: &serviceAccessController,
+					Validator:               validtor,
+					Proxier:                 proxier,
+					RateLimiter:             rateLimiter,
+					ServiceAccessController: serviceAccessController,
 					GetService:              getServiceFunc,
+					Telemter:                mockRecorder,
 				}
 
 				handler, err := NewHandler(hrd)
@@ -194,9 +161,7 @@ func TestGetHandler(t *testing.T) {
 					t.Fatal("failed to get handler", err)
 				}
 
-				w := httptest.NewRecorder()
 				handler.ServeHTTP(w, r)
-				defer w.Result().Body.Close()
 
 				assert.Equal(t, http.StatusOK, w.Result().StatusCode, "the status codes should be equal")
 				data, err := io.ReadAll(w.Result().Body)
@@ -217,12 +182,12 @@ func TestGetHandler(t *testing.T) {
 				responseBodyText := "hello world"
 				resp := http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(responseBodyText))}
 
-				configLoader := mockConfig{}
-				validtor := mockValidator{}
-				proxier := mockProxier{}
-				rateLimiter := mockRateLimiter{}
-				serviceAccessController := mockServiceAccessController{}
-				mss := mockServiceStore{}
+				configLoader := mocks.MockConfig{}
+				validtor := mocks.MockValidator{}
+				proxier := mocks.MockProxier{}
+				rateLimiter := mocks.MockRateLimiter{}
+				serviceAccessController := mocks.MockServiceAccessController{}
+				mss := mocks.MockServiceStore{}
 				var getServiceFunc services.GetServiceFunc = func(scs []config.ServiceConfig) services.Storer {
 					return &mss
 				}
@@ -280,12 +245,12 @@ func TestGetHandler(t *testing.T) {
 				responseBodyText := "hello world"
 				resp := http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(responseBodyText))}
 
-				configLoader := mockConfig{}
-				validtor := mockValidator{}
-				proxier := mockProxier{}
-				rateLimiter := mockRateLimiter{}
-				serviceAccessController := mockServiceAccessController{}
-				mss := mockServiceStore{}
+				configLoader := mocks.MockConfig{}
+				validtor := mocks.MockValidator{}
+				proxier := mocks.MockProxier{}
+				rateLimiter := mocks.MockRateLimiter{}
+				serviceAccessController := mocks.MockServiceAccessController{}
+				mss := mocks.MockServiceStore{}
 				var getServiceFunc services.GetServiceFunc = func(scs []config.ServiceConfig) services.Storer {
 					return &mss
 				}
@@ -333,12 +298,12 @@ func TestGetHandler(t *testing.T) {
 				responseBodyText := "hello world"
 				resp := http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(responseBodyText))}
 
-				configLoader := mockConfig{}
-				validtor := mockValidator{}
-				proxier := mockProxier{}
-				rateLimiter := mockRateLimiter{}
-				serviceAccessController := mockServiceAccessController{}
-				mss := mockServiceStore{}
+				configLoader := mocks.MockConfig{}
+				validtor := mocks.MockValidator{}
+				proxier := mocks.MockProxier{}
+				rateLimiter := mocks.MockRateLimiter{}
+				serviceAccessController := mocks.MockServiceAccessController{}
+				mss := mocks.MockServiceStore{}
 				var getServiceFunc services.GetServiceFunc = func(scs []config.ServiceConfig) services.Storer {
 					return &mss
 				}
@@ -386,12 +351,12 @@ func TestGetHandler(t *testing.T) {
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
 
-				configLoader := mockConfig{}
-				validtor := mockValidator{}
-				proxier := mockProxier{}
-				rateLimiter := mockRateLimiter{}
-				serviceAccessController := mockServiceAccessController{}
-				mss := mockServiceStore{}
+				configLoader := mocks.MockConfig{}
+				validtor := mocks.MockValidator{}
+				proxier := mocks.MockProxier{}
+				rateLimiter := mocks.MockRateLimiter{}
+				serviceAccessController := mocks.MockServiceAccessController{}
+				mss := mocks.MockServiceStore{}
 				var getServiceFunc services.GetServiceFunc = func(scs []config.ServiceConfig) services.Storer {
 					return &mss
 				}
