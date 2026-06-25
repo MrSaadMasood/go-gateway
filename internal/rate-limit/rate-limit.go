@@ -124,9 +124,10 @@ func NewReqRateLimiter(ctx context.Context, globalRateLimitPerMinute float64, sc
 		}
 	}
 
-	ticker := time.NewTicker(5 * time.Minute)
-
 	go func() {
+
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
 
 		for {
 			select {
