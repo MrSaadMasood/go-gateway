@@ -85,12 +85,12 @@ func newTokenbucket(ctx context.Context, capacity, tokenCountToFill int, refillR
 
 	go func() {
 		ticker := time.NewTicker(refillRate)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
 				tb.fill()
 			case <-ctx.Done():
-				ticker.Stop()
 				return
 			}
 		}
