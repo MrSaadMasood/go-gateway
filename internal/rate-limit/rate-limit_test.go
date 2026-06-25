@@ -71,8 +71,8 @@ func TestReqRateLimiter(t *testing.T) {
 					},
 				}
 
-				serviceConfigs := []config.ServiceConfig{
-					testService1,
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
 				}
 				globalRl := 100.0
 				cap, _, _, _ := calculateBucketData(globalRl)
@@ -110,19 +110,21 @@ func TestReqRateLimiter(t *testing.T) {
 				}
 
 				testService1 := config.ServiceConfig{
-					ServiceName:        "test-service",
-					ServiceUrl:         "/test-service",
-					Timeout:            nil,
-					RateLimitOpts:      &rateLimitOpts,
-					ValidatorOpts:      nil,
-					RedirectOpts:       nil,
-					UrlDepricationOpts: nil,
-					PolicyOpts:         nil,
-					VersionOpts:        nil,
+					ServiceName:   "test-service",
+					ServiceUrl:    "/test-service",
+					Timeout:       nil,
+					RateLimitOpts: &rateLimitOpts,
+					RedirectOpts:  nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
 				}
 
-				serviceConfigs := []config.ServiceConfig{
-					testService1,
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
 				}
 
 				cap, _, _, _ := calculateBucketData(servcieRl)
@@ -161,21 +163,22 @@ func TestReqRateLimiter(t *testing.T) {
 					},
 				}
 
-				serviceUrl := "/test-service"
 				testService1 := config.ServiceConfig{
-					ServiceName:        "test-service",
-					ServiceUrl:         serviceUrl,
-					Timeout:            nil,
-					RateLimitOpts:      &rateLimitOpts,
-					ValidatorOpts:      nil,
-					RedirectOpts:       nil,
-					UrlDepricationOpts: nil,
-					PolicyOpts:         nil,
-					VersionOpts:        nil,
+					ServiceName:   "test-service",
+					ServiceUrl:    "/test-service",
+					Timeout:       nil,
+					RateLimitOpts: &rateLimitOpts,
+					RedirectOpts:  nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
 				}
 
-				serviceConfigs := []config.ServiceConfig{
-					testService1,
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
 				}
 
 				globalRl := 1000.0
@@ -211,20 +214,23 @@ func TestReqRateLimiter(t *testing.T) {
 				}
 
 				testService1 := config.ServiceConfig{
-					ServiceName:        "test-service",
-					ServiceUrl:         "/test-service",
-					Timeout:            nil,
-					RateLimitOpts:      &rateLimitOpts,
-					ValidatorOpts:      nil,
-					RedirectOpts:       nil,
-					UrlDepricationOpts: nil,
-					PolicyOpts:         nil,
-					VersionOpts:        nil,
+					ServiceName:   "test-service",
+					ServiceUrl:    "/test-service",
+					Timeout:       nil,
+					RateLimitOpts: &rateLimitOpts,
+					RedirectOpts:  nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
 				}
 
-				serviceConfigs := []config.ServiceConfig{
-					testService1,
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
 				}
+
 				globalRl := 100.0
 				endpoint := "/test-service/v1"
 
