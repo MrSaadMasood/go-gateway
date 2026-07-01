@@ -99,6 +99,5 @@ func (s *storage) ReadLogsHandler() http.Handler {
 
 		w.WriteHeader(http.StatusOK)
 		encoder.Encode(*logs)
-		return
 	})
 }
