@@ -32,15 +32,15 @@ func TestGetHandler(t *testing.T) {
 	}
 
 	rateLimitOpts := config.ServiceRateLimitOpts{
-		RateLimit:            nil,
-		RouteLevelRateLimits: nil,
+		RateLimitPerMinute:            nil,
+		RouteLevelRateLimitsPerMinute: nil,
 	}
 	validatorOpts := config.ServiceValidatorOpts{
 		RequiredHeaders:   nil,
 		RestrictedHeaders: nil,
 		AllowedHeaders:    nil,
 	}
-	redirectOpts := config.ServiceRedirectOpts{RouteLevelRedirection: nil, ProxyReqTimeout: sampleTimeout(2)}
+	redirectOpts := config.ServiceRedirectOpts{RouteLevelRedirection: nil, ProxyReqTimeoutInSeconds: sampleTimeout(2)}
 	deprecationOpts := config.ServiceDepricationOpts{
 		DeprecatedUrls:    nil,
 		DeprecatedHeaders: nil,
@@ -53,11 +53,11 @@ func TestGetHandler(t *testing.T) {
 	}
 
 	configService := config.ServiceConfig{
-		ServiceName:   "test-service",
-		ServiceUrl:    "/test-service",
-		Timeout:       sampleTimeout(4),
-		RateLimitOpts: &rateLimitOpts,
-		RedirectOpts:  &redirectOpts,
+		ServiceName:      "test-service",
+		ServiceSlug:      "/test-service",
+		TimeoutInSeconds: sampleTimeout(4),
+		RateLimitOpts:    &rateLimitOpts,
+		RedirectOpts:     &redirectOpts,
 		AuthOpts: config.ServcieAuthOpts{
 			ValidatorOpts:   &validatorOpts,
 			PolicyOpts:      &policyOpts,
@@ -67,10 +67,10 @@ func TestGetHandler(t *testing.T) {
 	}
 
 	c := config.Config{
-		Port:                5000,
-		Timeout:             10 * time.Second,
-		RateLimit:           10,
-		ReqSizeLimitInBytes: 3000,
+		Port:                   5000,
+		GlobalTimeoutInSeconds: 10 * time.Second,
+		RateLimitPerMinute:     10,
+		ReqSizeLimitInBytes:    3000,
 		Services: []config.ServiceConfig{
 			configService,
 		},

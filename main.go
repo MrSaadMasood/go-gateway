@@ -33,7 +33,7 @@ func main() {
 		return
 	}
 
-	var configLoader config.Loader = config.NewMockConfigLoader()
+	var configLoader config.Loader = config.NewConfigLoader()
 	c, err := configLoader.Load()
 	if err != nil {
 		panic(err)
@@ -50,7 +50,7 @@ func main() {
 	scm := c.GetServiceConfigMap()
 	var validator validate.Validator = validate.NewReqValidator(c.BlockedIps, c.AllowedOrigins, c.ReqSizeLimitInBytes, scm)
 	var proxier proxy.Proxier = proxy.ReqProxy{}
-	var rateLimiter ratelimit.RateLimiter = ratelimit.NewReqRateLimiter(ctx, c.RateLimit, scm)
+	var rateLimiter ratelimit.RateLimiter = ratelimit.NewReqRateLimiter(ctx, c.RateLimitPerMinute, scm)
 	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}
 	var requestTelemeter telemeter.Recorder = telemeter.NewReqTelemeter(scm)
 	var storer store.Storer = store.NewStorage(ctx)
@@ -82,9 +82,9 @@ func main() {
 	mux.Handle("GET /logs", storer.ReadLogsHandler())
 
 	server := &http.Server{
-		ReadHeaderTimeout: c.Timeout,
-		ReadTimeout:       c.Timeout,
-		WriteTimeout:      c.Timeout,
+		ReadHeaderTimeout: c.GlobalTimeoutInSeconds,
+		ReadTimeout:       c.GlobalTimeoutInSeconds,
+		WriteTimeout:      c.GlobalTimeoutInSeconds,
 		Handler:           mux,
 		BaseContext: func(l net.Listener) context.Context {
 			return ctx
@@ -100,7 +100,7 @@ func main() {
 
 	<-ctx.Done()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*c.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*c.GlobalTimeoutInSeconds)
 	defer cancel()
 
 	if err = server.Shutdown(ctx); !errors.Is(err, http.ErrServerClosed) {

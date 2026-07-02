@@ -31,11 +31,11 @@ func TestValidate(t *testing.T) {
 			t: func(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
-					ServiceName:   "test-service",
-					ServiceUrl:    "/test-service",
-					Timeout:       nil,
-					RateLimitOpts: nil,
-					RedirectOpts:  nil,
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    nil,
+					RedirectOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						DeprecationOpts: nil,
@@ -72,11 +72,11 @@ func TestValidate(t *testing.T) {
 			t: func(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
-					ServiceName:   "test-service",
-					ServiceUrl:    "/test-service",
-					Timeout:       nil,
-					RateLimitOpts: nil,
-					RedirectOpts:  nil,
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    nil,
+					RedirectOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						DeprecationOpts: nil,
@@ -119,11 +119,11 @@ func TestValidate(t *testing.T) {
 				routeBlockedIp := "3.3.3.3"
 
 				testService1 := config.ServiceConfig{
-					ServiceName:   "test-service",
-					ServiceUrl:    "/test-service",
-					Timeout:       nil,
-					RateLimitOpts: nil,
-					RedirectOpts:  nil,
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    nil,
+					RedirectOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						DeprecationOpts: nil,
@@ -175,11 +175,11 @@ func TestValidate(t *testing.T) {
 			t: func(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
-					ServiceName:   "test-service",
-					ServiceUrl:    "/test-service",
-					Timeout:       nil,
-					RateLimitOpts: nil,
-					RedirectOpts:  nil,
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    nil,
+					RedirectOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts: &config.ServiceValidatorOpts{
 							RequiredHeaders:   []string{"Required-1"},
@@ -235,11 +235,11 @@ func TestValidate(t *testing.T) {
 			t: func(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
-					ServiceName:   "test-service",
-					ServiceUrl:    "/test-service",
-					Timeout:       nil,
-					RateLimitOpts: nil,
-					RedirectOpts:  nil,
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    nil,
+					RedirectOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						PolicyOpts: &config.ServicePolicyOpts{
 							ServiceBearerTokenPolicyOpts: &config.ServiceBearerTokenPolicyOpts{
@@ -285,11 +285,11 @@ func TestValidate(t *testing.T) {
 			t: func(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
-					ServiceName:   "test-service",
-					ServiceUrl:    "/test-service",
-					Timeout:       nil,
-					RateLimitOpts: nil,
-					RedirectOpts:  nil,
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    nil,
+					RedirectOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						DeprecationOpts: &config.ServiceDepricationOpts{
 							DeprecatedUrls: []config.ReqPath{"/deprecated-1"},
@@ -332,11 +332,11 @@ func TestValidate(t *testing.T) {
 			t: func(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
-					ServiceName:   "test-service",
-					ServiceUrl:    "/test-service",
-					Timeout:       nil,
-					RateLimitOpts: nil,
-					RedirectOpts:  nil,
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    nil,
+					RedirectOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						DeprecationOpts: nil,

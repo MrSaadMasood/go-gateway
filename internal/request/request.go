@@ -65,15 +65,6 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 			if err != nil {
 				return nil, err
 			}
-			err = hrd.ServiceAccessController.Control(controller.AccessControllerOpts{
-				RestrictedServices: c.InternalOnlyServices,
-				RestrictedPaths:    c.InternalOnlyServicesUrls,
-				ServiceName:        service.ServiceName,
-				ReqPath:            r.URL.Path,
-			})
-			if err != nil {
-				return nil, err
-			}
 
 			err = hrd.Validator.Validate(w, r, service.ServiceName)
 			if err != nil {
@@ -251,7 +242,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 					sendError(err, w, r)
 					return
 				}
-				ctx, cancel := context.WithTimeout(r.Context(), service.GetProxyTimeout(c.Timeout))
+				ctx, cancel := context.WithTimeout(r.Context(), service.GetProxyTimeout(c.GlobalTimeoutInSeconds))
 				defer cancel()
 				h.ServeHTTP(w, r.WithContext(ctx))
 			})

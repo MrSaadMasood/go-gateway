@@ -26,11 +26,11 @@ func (ms mockStore) ReadLogsHandler() http.Handler {
 func TestAuditHandler(t *testing.T) {
 
 	testService1 := config.ServiceConfig{
-		ServiceName:   "test-service",
-		ServiceUrl:    "/test-service",
-		Timeout:       nil,
-		RateLimitOpts: nil,
-		RedirectOpts:  nil,
+		ServiceName:      "test-service",
+		ServiceUrl:       "/test-service",
+		TimeoutInSeconds: nil,
+		RateLimitOpts:    nil,
+		RedirectOpts:     nil,
 		AuthOpts: config.ServcieAuthOpts{
 			ValidatorOpts:   nil,
 			DeprecationOpts: nil,

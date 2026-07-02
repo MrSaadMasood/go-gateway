@@ -181,10 +181,10 @@ func (rrl *reqRateLimiter) getBuckets(ip, serviceName, path string) (*buckets, e
 
 	var serviceRateLimit float64
 
-	if sc.RateLimitOpts == nil || sc.RateLimitOpts.RateLimit == nil {
+	if sc.RateLimitOpts == nil || sc.RateLimitOpts.RateLimitPerMinute == nil {
 		serviceRateLimit = FALLBACK_RATE_LIMIT
 	} else {
-		serviceRateLimit = *sc.RateLimitOpts.RateLimit
+		serviceRateLimit = *sc.RateLimitOpts.RateLimitPerMinute
 	}
 
 	sTBucket := b.getServiceTb(serviceName)
@@ -214,8 +214,8 @@ func (rrl *reqRateLimiter) getBuckets(ip, serviceName, path string) (*buckets, e
 		utbm = make(map[string]*tBucket)
 	}
 
-	if sc.RateLimitOpts != nil && sc.RateLimitOpts.RouteLevelRateLimits != nil {
-		for url, limit := range sc.RateLimitOpts.RouteLevelRateLimits {
+	if sc.RateLimitOpts != nil && sc.RateLimitOpts.RouteLevelRateLimitsPerMinute != nil {
+		for url, limit := range sc.RateLimitOpts.RouteLevelRateLimitsPerMinute {
 
 			utb := sTBucket.getUrlTb(url)
 			if utb == nil {

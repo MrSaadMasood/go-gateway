@@ -52,16 +52,16 @@ func TestReqRateLimiter(t *testing.T) {
 			t: func(t *testing.T) {
 
 				rateLimitOpts := config.ServiceRateLimitOpts{
-					RateLimit:            nil,
-					RouteLevelRateLimits: nil,
+					RateLimitPerMinute:            nil,
+					RouteLevelRateLimitsPerMinute: nil,
 				}
 
 				testService1 := config.ServiceConfig{
-					ServiceName:   "test-service",
-					ServiceUrl:    "/test-service",
-					Timeout:       nil,
-					RateLimitOpts: &rateLimitOpts,
-					RedirectOpts:  nil,
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    &rateLimitOpts,
+					RedirectOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						DeprecationOpts: nil,
