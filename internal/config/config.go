@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"time"
+
+	"github.com/go-playground/validator/v10"
 )
 
 type Loader interface {
@@ -19,20 +21,20 @@ type ServiceRateLimitOpts struct {
 	RateLimitPerMinute *float64 `json:"rate_limit_per_min"`
 
 	// service route level rate limits
-	RouteLevelRateLimitsPerMinute map[string]float64 `json:"route_level_limit_per_min"`
+	RouteLevelRateLimitsPerMinute map[string]float64 `json:"route_level_limit_per_min" validate:"omitempty,dive,required"`
 }
 
 type ServiceBlockedIpsOpts struct {
 	// service level blocked ips
-	BlockedIps []string `json:"blocked_ips"`
+	BlockedIps []string `json:"blocked_ips" validate:"omitempty,dive,required"`
 
 	// service route level blocked ips
-	RouteLevelBlockedIps map[string][]string `json:"route_level_blocked_ips"`
+	RouteLevelBlockedIps map[string][]string `json:"route_level_blocked_ips" validate:"omitempty,dive,required"`
 }
 
 type ServiceReqOriginOpts struct {
 	// service level allowed origins
-	AllowedOrigins []string `json:"allowed_origins"`
+	AllowedOrigins []string `json:"allowed_origins" validate:"omitempty,dive,required"`
 }
 
 type ServiceBearerTokenPolicyOpts struct {
@@ -40,13 +42,13 @@ type ServiceBearerTokenPolicyOpts struct {
 	ShouldVerifyBearerToken bool `json:"should_verify_bearer_token"`
 
 	// skips bearer token existance check for the provided paths of the service
-	SkipBearerTokenCheckPaths []string `json:"skip_bearer_token_check_path"`
+	SkipBearerTokenCheckPaths []string `json:"skip_bearer_token_check_path" validate:"omitempty,dive,required"`
 }
 
 type ServicePolicyOpts struct {
-	*ServiceBlockedIpsOpts        `json:"blocked_ip_opts"`
-	*ServiceReqOriginOpts         `json:"req_origin_opts"`
-	*ServiceBearerTokenPolicyOpts `json:"bearer_token_policy_opts"`
+	*ServiceBlockedIpsOpts        `json:"blocked_ip_opts" validate:"omitempty,dive"`
+	*ServiceReqOriginOpts         `json:"req_origin_opts" validate:"omitempty,dive"`
+	*ServiceBearerTokenPolicyOpts `json:"bearer_token_policy_opts" validate:"omitempty,dive"`
 }
 
 type ServiceValidatorOpts struct {
@@ -80,20 +82,20 @@ type ServiceVersionOpts struct {
 type ServiceDepricationOpts struct {
 
 	// service request paths that are legacy
-	DeprecatedUrls []ReqPath `json:"deprecated_urls"`
+	DeprecatedUrls []ReqPath `json:"deprecated_urls" validate:"omitempty,dive,required"`
 
 	// service request headers that are legacy
-	DeprecatedHeaders []string `json:"deprecated_headers"`
+	DeprecatedHeaders []string `json:"deprecated_headers" validate:"omitempty,dive,required"`
 
 	// service request paths that no longer available and would result in request failure
-	ObsoleteUrls []ReqPath `json:"obsolete_urls"`
+	ObsoleteUrls []ReqPath `json:"obsolete_urls" validate:"omitempty,dive,required"`
 }
 
 type ServcieAuthOpts struct {
-	ValidatorOpts   *ServiceValidatorOpts   `json:"validator_opts"`
-	DeprecationOpts *ServiceDepricationOpts `json:"deprecation_opts"`
-	PolicyOpts      *ServicePolicyOpts      `json:"policy_opts"`
-	VersionOpts     *ServiceVersionOpts     `json:"version_opts"`
+	ValidatorOpts   *ServiceValidatorOpts   `json:"validator_opts" validate:"omitempty,dive"`
+	DeprecationOpts *ServiceDepricationOpts `json:"deprecation_opts" validate:"omitempty,dive"`
+	PolicyOpts      *ServicePolicyOpts      `json:"policy_opts" validate:"omitempty,dive"`
+	VersionOpts     *ServiceVersionOpts     `json:"version_opts" validate:"omitempty,dive"`
 }
 
 type ServiceConfig struct {
@@ -106,9 +108,9 @@ type ServiceConfig struct {
 	// service level request timeout
 	TimeoutInSeconds *float64 `json:"timeout_sec"`
 
-	RateLimitOpts *ServiceRateLimitOpts `json:"rate_limit_opts"`
-	RedirectOpts  *ServiceRedirectOpts  `json:"redirect_opts"`
-	AuthOpts      ServcieAuthOpts       `json:"auth_opts" validate:"required"`
+	RateLimitOpts *ServiceRateLimitOpts `json:"rate_limit_opts" validate:"omitempty,dive"`
+	RedirectOpts  *ServiceRedirectOpts  `json:"redirect_opts" validate:"omitempty,dive"`
+	AuthOpts      ServcieAuthOpts       `json:"auth_opts" vadlidate:"dive,required"`
 }
 
 func (sc *ServiceConfig) GetProxyTimeout(globalTimeout time.Duration) time.Duration {
@@ -139,16 +141,16 @@ type Config struct {
 	RateLimitPerMinute float64 `json:"rate_limit_per_min" validate:"required"`
 
 	// service specific configs
-	Services []ServiceConfig `json:"services" validate:"required"`
+	Services []ServiceConfig `json:"services" validate:"dive,required,min=1"`
 
 	// max req size allowed
 	ReqSizeLimitInBytes int `json:"req_size_in_bytes" validate:"required"`
 
 	// global ips that should be blocked
-	BlockedIps []string `json:"blocked_ips"`
+	BlockedIps []string `json:"blocked_ips" validate:"omitempty,dive,required"`
 
 	// globally permitted origins
-	AllowedOrigins []string `json:"allowed_origins"`
+	AllowedOrigins []string `json:"allowed_origins" validate:"omitempty,dive,required"`
 
 	// interval after which gateway would check the health of the services
 	HealthCheckIntervalInSeconds int64 `json:"health_interval_sec" validate:"required"`
@@ -179,7 +181,14 @@ func (ml *ConfigLoader) Load() (Config, error) {
 		panic(err)
 	}
 
-	return Config{}, nil
+	v := validator.New()
+
+	err = v.Struct(config)
+	if err != nil {
+		panic(err)
+	}
+
+	return config, nil
 
 }
 
