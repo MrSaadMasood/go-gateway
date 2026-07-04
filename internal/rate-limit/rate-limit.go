@@ -3,7 +3,6 @@ package ratelimit
 import (
 	"context"
 	"errors"
-	"fmt"
 	"gateway/internal/config"
 	customerrors "gateway/internal/custom-errors"
 	"gateway/internal/enums"
@@ -30,6 +29,59 @@ type reqRateLimiter struct {
 	ctx                   context.Context
 	ipTBucketMap          ipTBucketMap
 	rwmu                  sync.RWMutex
+}
+
+func NewReqRateLimiter(ctx context.Context, globalRateLimitPerMinute float64, scm config.ServiceConfigMap) *reqRateLimiter {
+
+	rrl := reqRateLimiter{
+		ctx:                   ctx,
+		globalRateLimitPerMin: globalRateLimitPerMinute,
+		serviceConfigsMap:     scm,
+		ipTBucketMap:          make(ipTBucketMap),
+		rwmu:                  sync.RWMutex{},
+	}
+
+	cleanupBuckets := func() {
+		for ip, b := range rrl.ipTBucketMap {
+
+			if b.globalTB != nil && b.globalTB.isSittingIdle() {
+				rrl.UntrackIp(ip)
+				continue
+			}
+
+			for serviceName, stb := range b.serviceBData.sbMap {
+				if stb.tBucket != nil && stb.tBucket.isSittingIdle() {
+					b.serviceBData.untrackService(serviceName)
+					continue
+				}
+
+				for url, utb := range stb.urlTokenBucketMap {
+					if utb != nil && utb.isSittingIdle() {
+						stb.untrackUrl(url)
+					}
+				}
+			}
+
+		}
+	}
+
+	go func() {
+
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				cleanupBuckets()
+			case <-ctx.Done():
+				return
+			}
+		}
+
+	}()
+
+	return &rrl
 }
 
 func (rrl *reqRateLimiter) getIpTBucket(ip string) *buckets {
@@ -88,59 +140,6 @@ func (rrl *reqRateLimiter) UntrackIp(ip string) {
 	b.serviceBData.untrackAllSerices()
 
 	delete(rrl.ipTBucketMap, ip)
-}
-
-func NewReqRateLimiter(ctx context.Context, globalRateLimitPerMinute float64, scm config.ServiceConfigMap) *reqRateLimiter {
-
-	rrl := reqRateLimiter{
-		ctx:                   ctx,
-		globalRateLimitPerMin: globalRateLimitPerMinute,
-		serviceConfigsMap:     scm,
-		ipTBucketMap:          make(ipTBucketMap),
-		rwmu:                  sync.RWMutex{},
-	}
-
-	cleanupBuckets := func() {
-		for ip, b := range rrl.ipTBucketMap {
-
-			if b.globalTB != nil && b.globalTB.isSittingIdle() {
-				rrl.UntrackIp(ip)
-				continue
-			}
-
-			for serviceName, stb := range b.serviceBData.sbMap {
-				if stb.tBucket != nil && stb.tBucket.isSittingIdle() {
-					b.serviceBData.untrackService(serviceName)
-					continue
-				}
-
-				for url, utb := range stb.urlTokenBucketMap {
-					if utb != nil && utb.isSittingIdle() {
-						stb.untrackUrl(url)
-					}
-				}
-			}
-
-		}
-	}
-
-	go func() {
-
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				cleanupBuckets()
-			case <-ctx.Done():
-				return
-			}
-		}
-
-	}()
-
-	return &rrl
 }
 
 func (rrl *reqRateLimiter) setIpTBucket(ip string, b *buckets) {
@@ -249,7 +248,6 @@ func calculateBucketData(reqLimitPerMin float64) (int, int, int, time.Duration) 
 	}
 
 	completeRefillTime := maxReqBurstAllowed * reqRefillTime
-	fmt.Println("the calculated data is", reqLimitPerMin, "capactiy", capacity, "processespersec", reqProcessedPerSec, "refiletime", completeRefillTime, "duration", time.Duration(minRefillTime*float64(time.Second)))
 
 	return capacity, int(reqProcessedPerSec), int(completeRefillTime), time.Duration(minRefillTime * float64(time.Second))
 }

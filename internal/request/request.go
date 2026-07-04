@@ -86,7 +86,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 
 	}
 
-	rateLimitReqSuccess := func(c config.Config) ActionFunc {
+	rateLimitReqSuccess := func(config.Config) ActionFunc {
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
 
 			service, err := common.MappedServiceFrom(r.Context())
@@ -106,7 +106,6 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 	proxyReqSuccess := func(config.Config) ActionFunc {
 
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
-
 			service, err := common.MappedServiceFrom(r.Context())
 			if err != nil {
 				return nil, err
@@ -144,7 +143,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 				return nil, err
 			}
 
-			res, err := hrd.Proxier.Proxy(timeoutCtx, r.Method, &body, r.Header, r.URL, *service.RedirectOpts)
+			res, err := hrd.Proxier.Proxy(timeoutCtx, r.Method, &body, r.Header, r.URL, service.RedirectOpts)
 			if err != nil {
 				return nil, err
 			}
