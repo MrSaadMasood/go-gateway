@@ -63,7 +63,7 @@ func NewLogData(r *http.Request) *LogData {
 
 	logData := &LogData{
 		Source:    "Auditor",
-		CreatedAt: time.Now().UTC().String(),
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		Data: LogPayload{
 			FailureData:        nil,
 			LogResData:         nil,
