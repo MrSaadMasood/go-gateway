@@ -57,6 +57,7 @@ func main() {
 	corsPolicy := cors.New(cors.Options{
 		AllowedOrigins: append([]string{}, c.AllowedOrigins...),
 	})
+	reqAuditor := auditor.NewReqAuditor(ctx, storer)
 
 	handler, err := request.NewHandler(request.HandleRequestData{
 		Config:                  c,
@@ -75,7 +76,7 @@ func main() {
 	}
 
 	handler = corsPolicy.Handler(handler)
-	handler = auditor.NewHandler(ctx, requestTelemeter, storer, handler)
+	handler = auditor.NewHandler(reqAuditor, requestTelemeter, handler)
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /", handler)
