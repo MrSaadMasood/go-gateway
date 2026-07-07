@@ -65,7 +65,12 @@
             "blocked_ips": [
               "172.16.1.100"
             ],
-            "route_level_blocked_ips": {} 
+            "route_level_blocked_ips": {
+              "/admin": [
+                "192.168.10.5",
+                "192.168.10.6"
+              ]
+            }
           },
           "req_origin_opts": {
             "allowed_origins": [
@@ -113,7 +118,7 @@
           "required_headers": [
             "Authorization"
           ],
-          "restricted_headers": [],
+          "restricted_headers": ["restricted"],
           "allowed_headers": [
             "Authorization",
             "Content-Type",
@@ -121,14 +126,15 @@
           ]
         },
         "deprecation_opts": {
-          "deprecated_urls": [],
-          "deprecated_headers": [],
-          "obsolete_urls": []
+          "deprecated_urls": ["deprecated-url"],
+          "deprecated_headers": ["deprecated-header"],
+          "obsolete_urls": ["obsolete-url"]
         },
         "policy_opts": {
           "blocked_ip_opts": {
-            "blocked_ips": [],
-            "route_level_blocked_ips":{} 
+            "blocked_ips": ["ip"],
+            "route_level_blocked_ips": {
+            }
           },
           "req_origin_opts": {
             "allowed_origins": [

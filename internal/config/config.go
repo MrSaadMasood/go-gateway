@@ -9,7 +9,7 @@ import (
 )
 
 type Loader interface {
-	Load() (Config, error)
+	Load() Config
 }
 
 type ReqPath string
@@ -21,7 +21,7 @@ type ServiceRateLimitOpts struct {
 	RateLimitPerMinute *float64 `json:"rate_limit_per_min"`
 
 	// service route level rate limits
-	RouteLevelRateLimitsPerMinute map[string]float64 `json:"route_level_limit_per_min" validate:"omitempty,dive,required"`
+	RouteLevelRateLimitsPerMinute map[string]float64 `json:"route_level_limit_per_min" validate:"omitempty,dive,keys,required,endkeys,required"`
 }
 
 type ServiceBlockedIpsOpts struct {
@@ -29,7 +29,7 @@ type ServiceBlockedIpsOpts struct {
 	BlockedIps []string `json:"blocked_ips" validate:"omitempty,dive,required"`
 
 	// service route level blocked ips
-	RouteLevelBlockedIps map[string][]string `json:"route_level_blocked_ips" validate:"omitempty,dive,required"`
+	RouteLevelBlockedIps map[string][]string `json:"route_level_blocked_ips,omitempty" validate:"omitempty,dive,keys,required,endkeys,dive,required"`
 }
 
 type ServiceReqOriginOpts struct {
@@ -39,16 +39,16 @@ type ServiceReqOriginOpts struct {
 
 type ServiceBearerTokenPolicyOpts struct {
 	// if tru would check if the bearer token is present in the request headers
-	ShouldVerifyBearerToken bool `json:"should_verify_bearer_token"`
+	ShouldVerifyBearerToken bool `json:"should_verify_bearer_token" validate:"boolean"`
 
 	// skips bearer token existance check for the provided paths of the service
 	SkipBearerTokenCheckPaths []string `json:"skip_bearer_token_check_path" validate:"omitempty,dive,required"`
 }
 
 type ServicePolicyOpts struct {
-	*ServiceBlockedIpsOpts        `json:"blocked_ip_opts" validate:"omitempty,dive"`
-	*ServiceReqOriginOpts         `json:"req_origin_opts" validate:"omitempty,dive"`
-	*ServiceBearerTokenPolicyOpts `json:"bearer_token_policy_opts" validate:"omitempty,dive"`
+	*ServiceBlockedIpsOpts        `json:"blocked_ip_opts" validate:"omitempty"`
+	*ServiceReqOriginOpts         `json:"req_origin_opts" validate:"omitempty"`
+	*ServiceBearerTokenPolicyOpts `json:"bearer_token_policy_opts" validate:"omitempty"`
 }
 
 type ServiceValidatorOpts struct {
@@ -92,10 +92,10 @@ type ServiceDepricationOpts struct {
 }
 
 type ServcieAuthOpts struct {
-	ValidatorOpts   *ServiceValidatorOpts   `json:"validator_opts" validate:"omitempty,dive"`
-	DeprecationOpts *ServiceDepricationOpts `json:"deprecation_opts" validate:"omitempty,dive"`
-	PolicyOpts      *ServicePolicyOpts      `json:"policy_opts" validate:"omitempty,dive"`
-	VersionOpts     *ServiceVersionOpts     `json:"version_opts" validate:"omitempty,dive"`
+	ValidatorOpts   *ServiceValidatorOpts   `json:"validator_opts" validate:"omitempty"`
+	DeprecationOpts *ServiceDepricationOpts `json:"deprecation_opts" validate:"omitempty"`
+	PolicyOpts      *ServicePolicyOpts      `json:"policy_opts" validate:"omitempty"`
+	VersionOpts     *ServiceVersionOpts     `json:"version_opts" validate:"omitempty"`
 }
 
 type ServiceConfig struct {
@@ -108,9 +108,9 @@ type ServiceConfig struct {
 	// service level request timeout
 	TimeoutInSeconds *float64 `json:"timeout_sec"`
 
-	RateLimitOpts *ServiceRateLimitOpts `json:"rate_limit_opts" validate:"omitempty,dive"`
-	RedirectOpts  *ServiceRedirectOpts  `json:"redirect_opts" validate:"omitempty,dive"`
-	AuthOpts      ServcieAuthOpts       `json:"auth_opts" vadlidate:"dive,required"`
+	RateLimitOpts *ServiceRateLimitOpts `json:"rate_limit_opts" validate:"omitempty"`
+	RedirectOpts  *ServiceRedirectOpts  `json:"redirect_opts" validate:"omitempty"`
+	AuthOpts      ServcieAuthOpts       `json:"auth_opts" validate:"omitempty,required"`
 }
 
 func (sc *ServiceConfig) GetProxyTimeout(globalTimeout time.Duration) time.Duration {
@@ -141,7 +141,7 @@ type Config struct {
 	RateLimitPerMinute float64 `json:"rate_limit_per_min" validate:"required"`
 
 	// service specific configs
-	Services []ServiceConfig `json:"services" validate:"dive,required,min=1"`
+	Services []ServiceConfig `json:"services" validate:"required,dive"`
 
 	// max req size allowed
 	ReqSizeLimitInBytes int `json:"req_size_in_bytes" validate:"required"`
@@ -166,13 +166,15 @@ func (c *Config) GetServiceConfigMap() ServiceConfigMap {
 	return scm
 }
 
-type ConfigLoader struct{}
+type ConfigLoader struct {
+	path string
+}
 
-func (ml *ConfigLoader) Load() (Config, error) {
+func (cl *ConfigLoader) Load() Config {
 
-	f, err := os.ReadFile("../../config.json")
+	f, err := os.ReadFile(cl.path)
 	if err != nil {
-		return Config{}, nil
+		panic(err)
 	}
 
 	var config Config
@@ -188,10 +190,10 @@ func (ml *ConfigLoader) Load() (Config, error) {
 		panic(err)
 	}
 
-	return config, nil
+	return config
 
 }
 
-func NewConfigLoader() *ConfigLoader {
-	return &ConfigLoader{}
+func NewConfigLoader(path string) *ConfigLoader {
+	return &ConfigLoader{path: path}
 }

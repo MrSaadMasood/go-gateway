@@ -33,19 +33,11 @@ func main() {
 		return
 	}
 
-	var configLoader config.Loader = config.NewConfigLoader()
-	c, err := configLoader.Load()
-	if err != nil {
-		panic(err)
-	}
+	var configLoader config.Loader = config.NewConfigLoader("./config.json")
+	c := configLoader.Load()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
-	c, err = configLoader.Load()
-	if err != nil {
-		panic(err)
-	}
 
 	scm := c.GetServiceConfigMap()
 	var validator validate.Validator = validate.NewReqValidator(c.BlockedIps, c.AllowedOrigins, c.ReqSizeLimitInBytes, scm)
