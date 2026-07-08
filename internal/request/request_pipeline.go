@@ -105,7 +105,9 @@ func (m *reqStateMachine) initializeRequest(f types.HandlerFuncWithError) http.H
 		ctx := r.Context()
 		newReq := r.WithContext(common.WithReqStatus(ctx, enums.ReqInitialized))
 		err := f(w, newReq)
-		sendError(err, w, r)
+		if err != nil {
+			sendError(err, w, r)
+		}
 	})
 }
 
@@ -127,18 +129,15 @@ func (m *reqStateMachine) proxyM(f types.HandlerFuncWithError) types.HandlerFunc
 }
 
 func (m *reqStateMachine) sendSuccessM() types.HandlerFuncWithError {
-	return func(w http.ResponseWriter, r *http.Request) error {
-		_, err := m.fire(w, r, enums.ReqSuccessEvent, enums.ReqFailed)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
+	return m.withWrapper(
+		func(w http.ResponseWriter, r *http.Request) error { return nil },
+		enums.ReqSuccessEvent,
+		enums.ReqFailed)
 }
 
 func (m *reqStateMachine) withWrapper(f types.HandlerFuncWithError, event enums.ReqEvent, fs enums.RequestStatus) types.HandlerFuncWithError {
-	return m.customErrorHandlerM(func(w http.ResponseWriter, r *http.Request) error {
 
+	return func(w http.ResponseWriter, r *http.Request) error {
 		req, err := m.fire(w, r, event, fs)
 		if err != nil {
 			return err
@@ -151,14 +150,6 @@ func (m *reqStateMachine) withWrapper(f types.HandlerFuncWithError, event enums.
 
 		return nil
 
-	})
-}
-
-func (m *reqStateMachine) customErrorHandlerM(f types.HandlerFuncWithError) types.HandlerFuncWithError {
-	return func(w http.ResponseWriter, r *http.Request) error {
-		err := f(w, r)
-		sendError(err, w, r)
-		return nil
 	}
 }
 
@@ -246,7 +237,8 @@ func sendError(err error, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		fmt.Println("the error is", err.Error())
+		http.Error(w, fmt.Sprint("Internal Server Error: ", err.Error()), http.StatusInternalServerError)
 		return
 	}
 }

@@ -3,7 +3,6 @@ package mocks
 import (
 	"context"
 	"gateway/internal/config"
-	"gateway/internal/controller"
 	"net/http"
 	"net/url"
 
@@ -16,7 +15,7 @@ type MockConfig struct {
 
 func (mc *MockConfig) Load() (config.Config, error) {
 	args := mc.Called()
-	return args.Get(0).(config.Config), nil
+	return args.Get(0).(config.Config), args.Error(1)
 }
 
 type MockValidator struct {
@@ -35,7 +34,7 @@ func (mv *MockValidator) ValidateReqSize(bodySizeInBytes int) error {
 
 type MockProxier struct{ mock.Mock }
 
-func (mp *MockProxier) Proxy(ctx context.Context, method string, body *[]byte, h http.Header, url *url.URL, ro config.ServiceRedirectOpts) (http.Response, error) {
+func (mp *MockProxier) Proxy(ctx context.Context, method string, body *[]byte, h http.Header, url *url.URL, ro *config.ServiceRedirectOpts) (http.Response, error) {
 	args := mp.Called(ctx, method, body, h, url, ro)
 	return args.Get(0).(http.Response), args.Error(1)
 }
@@ -43,14 +42,7 @@ func (mp *MockProxier) Proxy(ctx context.Context, method string, body *[]byte, h
 type MockRateLimiter struct{ mock.Mock }
 
 func (mrl *MockRateLimiter) Limit(serviceName, path, ip string) error {
-	args := mrl.Called(serviceName, path)
-	return args.Error(0)
-}
-
-type MockServiceAccessController struct{ mock.Mock }
-
-func (msc *MockServiceAccessController) Control(aco controller.AccessControllerOpts) error {
-	args := msc.Called(aco)
+	args := mrl.Called(serviceName, path, ip)
 	return args.Error(0)
 }
 
@@ -68,4 +60,20 @@ func (mt *MockTelemeter) Record(serviceName, path string) {
 
 func (mt *MockTelemeter) GetTelemetery(serviceName, path string) (uint64, uint64, error) {
 	return 1, 1, nil
+}
+
+type MockStore struct{ mock.Mock }
+
+func (ms *MockStore) Initialize() error {
+	args := ms.Called()
+	return args.Error(0)
+}
+
+type MockConfigLoader struct {
+	mock.Mock
+}
+
+func (mcl *MockConfigLoader) Load() (config.Config, error) {
+	args := mcl.Called()
+	return args.Get(0).(config.Config), args.Error(1)
 }

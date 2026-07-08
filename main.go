@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"gateway/internal/auditor"
 	"gateway/internal/config"
-	"gateway/internal/controller"
+	"gateway/internal/gateway"
 	"gateway/internal/proxy"
 	ratelimit "gateway/internal/rate-limit"
 	"gateway/internal/request"
@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/rs/cors"
 )
@@ -33,30 +34,33 @@ func main() {
 		return
 	}
 
-	var configLoader config.Loader = config.NewConfigLoader("./config.json")
-	c := configLoader.Load()
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	var configLoader config.Loader = config.NewConfigLoader("./config.json")
+	storage := store.NewStorage(ctx)
+	var storer store.Storer = storage
+
+	g := gateway.NewGateway(ctx, configLoader, storage)
+	c := g.Start()
 
 	scm := c.GetServiceConfigMap()
 	var validator validate.Validator = validate.NewReqValidator(c.BlockedIps, c.AllowedOrigins, c.ReqSizeLimitInBytes, scm)
 	var proxier proxy.Proxier = proxy.ReqProxy{}
 	var rateLimiter ratelimit.RateLimiter = ratelimit.NewReqRateLimiter(ctx, c.RateLimitPerMinute, scm)
-	var serviceAccessController controller.ServiceAccessController = controller.ReqServiceAccessController{}
 	var requestTelemeter telemeter.Recorder = telemeter.NewReqTelemeter(scm)
-	var storer store.Storer = store.NewStorage(ctx)
 	corsPolicy := cors.New(cors.Options{
 		AllowedOrigins: append([]string{}, c.AllowedOrigins...),
 	})
 
+	reqAuditor := auditor.NewReqAuditor(ctx, storer)
+
 	handler, err := request.NewHandler(request.HandleRequestData{
-		Config:                  c,
-		Validator:               validator,
-		RateLimiter:             rateLimiter,
-		ServiceAccessController: serviceAccessController,
-		Proxier:                 proxier,
-		Telemter:                requestTelemeter,
+		Config:      c,
+		Validator:   validator,
+		RateLimiter: rateLimiter,
+		Proxier:     proxier,
+		Telemter:    requestTelemeter,
 		GetService: func(scs []config.ServiceConfig) services.Storer {
 			return services.NewMockServiceStore(scs)
 		},
@@ -67,16 +71,16 @@ func main() {
 	}
 
 	handler = corsPolicy.Handler(handler)
-	handler = auditor.NewHandler(ctx, requestTelemeter, storer, handler)
+	handler = auditor.NewHandler(reqAuditor, requestTelemeter, handler)
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /", handler)
 	mux.Handle("GET /logs", storer.ReadLogsHandler())
 
 	server := &http.Server{
-		ReadHeaderTimeout: c.GlobalTimeoutInSeconds,
-		ReadTimeout:       c.GlobalTimeoutInSeconds,
-		WriteTimeout:      c.GlobalTimeoutInSeconds,
+		ReadHeaderTimeout: time.Duration(c.GlobalTimeoutInSeconds),
+		ReadTimeout:       time.Duration(c.GlobalTimeoutInSeconds),
+		WriteTimeout:      time.Duration(c.GlobalTimeoutInSeconds),
 		Handler:           mux,
 		BaseContext: func(l net.Listener) context.Context {
 			return ctx
@@ -92,7 +96,7 @@ func main() {
 
 	<-ctx.Done()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*c.GlobalTimeoutInSeconds)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(2*c.GlobalTimeoutInSeconds))
 	defer cancel()
 
 	if err = server.Shutdown(ctx); !errors.Is(err, http.ErrServerClosed) {

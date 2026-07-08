@@ -40,7 +40,8 @@ func TestTockenBucket(t *testing.T) {
 
 func TestReqRateLimiter(t *testing.T) {
 
-	ip := "0.0.0.0:3000"
+	ip1 := "0.0.0.0:3000"
+	ip2 := "1.1.1.1:3000"
 
 	tt := []struct {
 		name string
@@ -70,207 +71,184 @@ func TestReqRateLimiter(t *testing.T) {
 					},
 				}
 
-				globalRl := 1.0
-				cap, _, _, rate := calculateBucketData(globalRl)
-				bufferedTime := time.After(rate + (5 * time.Second))
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
+				}
+				globalRl := 100.0
+				cap, _, _, _ := calculateBucketData(globalRl)
 				endpoint := "/test-service/v1"
 
-				rrl := NewReqRateLimiter(context.Background(), globalRl, config.ServiceConfigMap{
-					testService1.ServiceName: testService1,
-				})
+				ctx, cancel := context.WithCancel(context.Background())
+				// immediately cancel the context to stop token refilling
+				cancel()
+
+				rrl := NewReqRateLimiter(ctx, globalRl, serviceConfigs)
 
 				for range cap {
-					rrl.Limit(testService1.ServiceName, endpoint, ip)
+					rrl.Limit(testService1.ServiceName, endpoint, ip1)
 				}
 
-				results := make([]error, 0)
-				done := make(chan bool)
-
-				go func() {
-					ticker := time.NewTicker(rate / 2)
-					for {
-						select {
-						case <-done:
-							return
-						case <-ticker.C:
-							err := rrl.Limit(testService1.ServiceName, endpoint, ip)
-							results = append(results, err)
-						}
-					}
-
-				}()
-
-				<-bufferedTime
-				done <- true
+				err := rrl.Limit(testService1.ServiceName, endpoint, ip1)
 
 				var successfullReq int
 				var failedReq int
 
-				for _, v := range results {
-					if v == nil {
-						successfullReq++
-					} else {
-						require.ErrorIs(t, v, globalRateLimitErr)
-						failedReq++
-					}
-				}
+				require.ErrorIs(t, err, globalRateLimitErr)
 
 				assert.GreaterOrEqual(t, failedReq, successfullReq)
 
 			},
 		},
-		// {
-		// 	name: "should rate limit at service level",
-		// 	t: func(t *testing.T) {
+		{
+			name: "should rate limit at service level",
+			t: func(t *testing.T) {
 
-		// 		servcieRl := 120.0
-		// 		rateLimitOpts := config.ServiceRateLimitOpts{
-		// 			RateLimit:            &servcieRl,
-		// 			RouteLevelRateLimits: nil,
-		// 		}
+				servcieRl := 120.0
+				rateLimitOpts := config.ServiceRateLimitOpts{
+					RateLimitPerMinute:            &servcieRl,
+					RouteLevelRateLimitsPerMinute: nil,
+				}
 
-		// 		testService1 := config.ServiceConfig{
-		// 			ServiceName:        "test-service",
-		// 			ServiceUrl:         "/test-service",
-		// 			Timeout:            nil,
-		// 			RateLimitOpts:      &rateLimitOpts,
-		// 			ValidatorOpts:      nil,
-		// 			RedirectOpts:       nil,
-		// 			UrlDepricationOpts: nil,
-		// 			PolicyOpts:         nil,
-		// 			VersionOpts:        nil,
-		// 		}
+				testService1 := config.ServiceConfig{
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    &rateLimitOpts,
+					RedirectOpts:     nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
+				}
 
-		// 		serviceConfigs := []config.ServiceConfig{
-		// 			testService1,
-		// 		}
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
+				}
 
-		// 		cap, _, _, rate := calculateBucketData(servcieRl)
-		// 		bufferedTime := time.After(rate + (5 * time.Second))
-		// 		endpoint := "/test-service/v1"
+				cap, _, _, _ := calculateBucketData(servcieRl)
+				endpoint := "/test-service/v1"
 
-		// 		rrl := NewReqRateLimiter(context.Background(), 1000, serviceConfigs)
+				ctx, cancel := context.WithCancel(context.Background())
+				// immediately cancel the context to stop token refilling
+				cancel()
 
-		// 		for range cap {
-		// 			rrl.Limit(testService1.ServiceName, endpoint, ip)
-		// 		}
+				rrl := NewReqRateLimiter(ctx, 1000, serviceConfigs)
 
-		// 		results := make([]error, 0)
-		// 		done := make(chan bool)
+				for range cap {
+					rrl.Limit(testService1.ServiceName, endpoint, ip1)
+				}
 
-		// 		go func() {
-		// 			ticker := time.NewTicker(rate / 2)
-		// 			for {
-		// 				select {
-		// 				case <-done:
-		// 					return
-		// 				case <-ticker.C:
-		// 					err := rrl.Limit(testService1.ServiceName, endpoint, ip)
-		// 					results = append(results, err)
-		// 				}
-		// 			}
-		// 		}()
+				err := rrl.Limit(testService1.ServiceName, endpoint, ip1)
+				require.ErrorIs(t, err, serviceLevelRateLimitErr)
 
-		// 		<-bufferedTime
-		// 		done <- true
+				var successfullReq int
+				var failedReq int
 
-		// 		var successfullReq int
-		// 		var failedReq int
+				assert.GreaterOrEqual(t, failedReq, successfullReq)
 
-		// 		for _, v := range results {
-		// 			if v == nil {
-		// 				successfullReq++
-		// 			} else {
-		// 				require.ErrorIs(t, v, serviceLevelRateLimitErr)
-		// 				failedReq++
-		// 			}
-		// 		}
+			},
+		},
+		{
+			name: "should rate limit at the route level",
+			t: func(t *testing.T) {
 
-		// 		assert.GreaterOrEqual(t, failedReq, successfullReq)
+				servcieRl := 500.0
+				routeRl := 120.0
+				rateLimitOpts := config.ServiceRateLimitOpts{
+					RateLimitPerMinute: &servcieRl,
+					RouteLevelRateLimitsPerMinute: map[string]float64{
+						"/v1": routeRl,
+					},
+				}
 
-		// 	},
-		// },
-		// {
-		// 	name: "should rate limit at the route level",
-		// 	t: func(t *testing.T) {
+				testService1 := config.ServiceConfig{
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    &rateLimitOpts,
+					RedirectOpts:     nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
+				}
 
-		// 		servcieRl := 500.0
-		// 		routeRl := 120.0
-		// 		rateLimitOpts := config.ServiceRateLimitOpts{
-		// 			RateLimit: &servcieRl,
-		// 			RouteLevelRateLimits: map[string]float64{
-		// 				"/v1": routeRl,
-		// 			},
-		// 		}
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
+				}
 
-		// 		serviceUrl := "/test-service"
-		// 		testService1 := config.ServiceConfig{
-		// 			ServiceName:        "test-service",
-		// 			ServiceUrl:         serviceUrl,
-		// 			Timeout:            nil,
-		// 			RateLimitOpts:      &rateLimitOpts,
-		// 			ValidatorOpts:      nil,
-		// 			RedirectOpts:       nil,
-		// 			UrlDepricationOpts: nil,
-		// 			PolicyOpts:         nil,
-		// 			VersionOpts:        nil,
-		// 		}
+				globalRl := 1000.0
+				cap, _, _, _ := calculateBucketData(routeRl)
 
-		// 		serviceConfigs := []config.ServiceConfig{
-		// 			testService1,
-		// 		}
+				ctx, cancel := context.WithCancel(context.Background())
+				// immediately cancel the context to stop token refilling
+				cancel()
 
-		// 		globalRl := 1000.0
-		// 		cap, _, _, rate := calculateBucketData(routeRl)
-		// 		bufferedTime := time.After(rate + (5 * time.Second))
+				rrl := NewReqRateLimiter(ctx, globalRl, serviceConfigs)
 
-		// 		rrl := NewReqRateLimiter(context.Background(), globalRl, serviceConfigs)
+				for range cap {
+					rrl.Limit(testService1.ServiceName, "/v1", ip1)
+				}
 
-		// 		for range cap {
-		// 			rrl.Limit(testService1.ServiceName, "/v1", ip)
-		// 		}
+				err := rrl.Limit(testService1.ServiceName, "/v1", ip1)
+				require.ErrorIs(t, err, routeLevelRateLimitErr)
 
-		// 		results := make([]error, 0)
-		// 		done := make(chan bool)
+				var successfullReq int
+				var failedReq int
 
-		// 		go func() {
-		// 			ticker := time.NewTicker(rate / 2)
-		// 			for {
-		// 				select {
-		// 				case <-done:
-		// 					return
-		// 				case <-ticker.C:
-		// 					err := rrl.Limit(testService1.ServiceName, "/v1", ip)
-		// 					results = append(results, err)
-		// 				}
-		// 			}
-		// 		}()
+				assert.GreaterOrEqual(t, failedReq, successfullReq)
 
-		// 		<-bufferedTime
-		// 		done <- true
+			},
+		},
+		{
+			name: "should ensure that req limiter treats different ips as separate entities / users",
+			t: func(t *testing.T) {
 
-		// 		var successfullReq int
-		// 		var failedReq int
+				rateLimitOpts := config.ServiceRateLimitOpts{
+					RateLimitPerMinute:            nil,
+					RouteLevelRateLimitsPerMinute: nil,
+				}
 
-		// 		for _, v := range results {
-		// 			if v == nil {
-		// 				successfullReq++
-		// 			} else {
-		// 				require.ErrorIs(t, v, routeLevelRateLimitErr)
-		// 				failedReq++
-		// 			}
-		// 		}
+				testService1 := config.ServiceConfig{
+					ServiceName:      "test-service",
+					ServiceUrl:       "/test-service",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    &rateLimitOpts,
+					RedirectOpts:     nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
+				}
 
-		// 		assert.GreaterOrEqual(t, failedReq, successfullReq)
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
+				}
 
-		// 	},
-		// },
-		// {
-		// 	name: "should ensure that req limiter treats different tips as separate entities / users",
-		// 	t: func(t *testing.T) {
+				globalRl := 100.0
+				endpoint := "/test-service/v1"
 
-		// 	},
-		// },
+				ctx, cancel := context.WithCancel(context.Background())
+				// immediately cancel the context to stop token refilling
+				cancel()
+
+				rrl := NewReqRateLimiter(ctx, globalRl, serviceConfigs)
+
+				rrl.Limit(testService1.ServiceName, endpoint, ip1)
+				rrl.Limit(testService1.ServiceName, endpoint, ip2)
+
+				tBucket1 := rrl.getIpTBucket(ip1)
+				tBucket2 := rrl.getIpTBucket(ip2)
+
+				assert.NotEqual(t, tBucket1, tBucket2, "the buckets should be different for each ip")
+			},
+		},
 	}
 
 	for _, test := range tt {

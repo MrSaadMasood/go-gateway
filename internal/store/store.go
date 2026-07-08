@@ -13,37 +13,46 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type Initializer interface {
+	Initialize() error
+}
+
 type Storer interface {
 	StoreLogs([]log.LogData) error
 	ReadLogsHandler() http.Handler
 }
 
-type storage struct {
+type Storage struct {
 	ctx context.Context
 	db  *pgxpool.Pool
 }
 
-func NewStorage(ctx context.Context) *storage {
+func (s *Storage) Initialize() error {
 
-	pool, err := pgxpool.New(ctx, env.GetDbConnString())
+	pool, err := pgxpool.New(s.ctx, env.GetDbConnString())
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	err = pool.Ping(ctx)
+	err = pool.Ping(s.ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	fmt.Println("Successfully connected to PostgreSQL!")
 
-	return &storage{
+	s.db = pool
+	return nil
+}
+
+func NewStorage(ctx context.Context) *Storage {
+	return &Storage{
 		ctx: ctx,
-		db:  pool,
+		db:  nil,
 	}
 }
 
-func (s *storage) StoreLogs(logs []log.LogData) error {
+func (s *Storage) StoreLogs(logs []log.LogData) error {
 	var rows [][]any = make([][]any, 0, len(logs))
 	for _, l := range logs {
 		rows = append(rows, []any{l.Data.ReqId, l.CreatedAt, l.Source, l.Data})
@@ -59,7 +68,7 @@ func (s *storage) StoreLogs(logs []log.LogData) error {
 	return nil
 }
 
-func (s *storage) readLogs() (*[]log.LogData, error) {
+func (s *Storage) readLogs() (*[]log.LogData, error) {
 	rows, err := s.db.Query(s.ctx, "SELECT created_at, source, data from request_logs ORDER BY created_at LIMIT 5000")
 	if err != nil {
 		return nil, err
@@ -82,7 +91,7 @@ func (s *storage) readLogs() (*[]log.LogData, error) {
 
 }
 
-func (s *storage) ReadLogsHandler() http.Handler {
+func (s *Storage) ReadLogsHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		encoder := json.NewEncoder(w)
 		logs, err := s.readLogs()

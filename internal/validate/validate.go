@@ -17,6 +17,11 @@ import (
 	"github.com/rs/cors"
 )
 
+type Validator interface {
+	Validate(w http.ResponseWriter, req *http.Request, serviceName string) error
+	ValidateReqSize(bodySizeInBytes int) error
+}
+
 type wrappedResponseWriter struct {
 	http.ResponseWriter
 	written bool
@@ -42,11 +47,6 @@ func (wrw *wrappedResponseWriter) Header() http.Header {
 func (wrw *wrappedResponseWriter) WriteHeader(statusCode int) {
 	wrw.written = true
 	wrw.ResponseWriter.WriteHeader(statusCode)
-}
-
-type Validator interface {
-	Validate(w http.ResponseWriter, req *http.Request, serviceName string) error
-	ValidateReqSize(bodySizeInBytes int) error
 }
 
 type reqValidator struct {

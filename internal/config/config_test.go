@@ -264,22 +264,20 @@ func TestConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "should panic if the config file is not present at the give address",
+			name: "should return error if the config file is not present at the give address",
 			t: func(t *testing.T) {
 				c := NewConfigLoader("./test-configs/fake-config.json")
-				assert.Panics(t, func() {
-					c.Load()
-				})
+				_, err := c.Load()
+				assert.Error(t, err)
 			},
 		},
 		{
-			name: "should parse the file if the config file is present at the given address",
+			name: "should successfully load config the file if the config file is present at the given address",
 			t: func(t *testing.T) {
-
 				c := NewConfigLoader("./test-configs/config.json")
-				assert.NotPanics(t, func() {
-					c.Load()
-				})
+				_, err := c.Load()
+				assert.NoError(t, err)
+
 			},
 		},
 	}

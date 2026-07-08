@@ -22,18 +22,17 @@ type auditData struct {
 
 type reqAuditor struct {
 	ctx             context.Context
-	reqAuditDataMap map[string]auditData
+	reqAuditDataMap map[string]*auditData
 	storage         store.Storer
+	flushDuration   time.Duration
 }
 
-func (ra *reqAuditor) Log(logs []log.LogData) {
-	err := ra.storage.StoreLogs(logs)
-	if err != nil {
-		logger.Println("Error occured while storing the request logs:", err.Error())
-	}
+func NewReqAuditor(ctx context.Context, storage store.Storer) *reqAuditor {
+	ra := reqAuditor{ctx, make(map[string]*auditData), storage, 5 * time.Minute}
+	return &ra
 }
 
-func (ra *reqAuditor) getProcessedRequests() []log.LogData {
+func (ra *reqAuditor) log() {
 	logs := make([]log.LogData, 0)
 	for reqId, auditData := range ra.reqAuditDataMap {
 		if auditData.processed {
@@ -41,17 +40,30 @@ func (ra *reqAuditor) getProcessedRequests() []log.LogData {
 			delete(ra.reqAuditDataMap, reqId)
 		}
 	}
-	return logs
+	err := ra.storage.StoreLogs(logs)
+	if err != nil {
+		logger.Println("Error occured while storing the request logs:", err.Error())
+	}
 }
-func (ra *reqAuditor) flushLogs(ctx context.Context) {
 
-	t := time.NewTicker(5 * time.Second)
+func (ra *reqAuditor) processedLogCount() int {
+	count := 0
+	for _, ad := range ra.reqAuditDataMap {
+		if ad.processed == true {
+			count++
+		}
+	}
+	return count
+}
+
+func (ra *reqAuditor) flushLogsPeriodically() {
+
+	t := time.NewTicker(ra.flushDuration)
 	for {
 		select {
 		case <-t.C:
-			reqs := ra.getProcessedRequests()
-			ra.Log(reqs)
-		case <-ctx.Done():
+			ra.log()
+		case <-ra.ctx.Done():
 			t.Stop()
 			return
 		}
@@ -59,14 +71,13 @@ func (ra *reqAuditor) flushLogs(ctx context.Context) {
 
 }
 
-func NewHandler(ctx context.Context, recorder telemeter.Recorder, storage store.Storer, h http.Handler) http.Handler {
-	ra := reqAuditor{ctx, make(map[string]auditData), storage}
-	go ra.flushLogs(ctx)
+func NewHandler(ra *reqAuditor, recorder telemeter.Recorder, h http.Handler) http.Handler {
+	go ra.flushLogsPeriodically()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		ld := log.NewLogData(r)
-		ad := auditData{
+		ad := &auditData{
 			processed: false,
 			logData:   ld,
 		}

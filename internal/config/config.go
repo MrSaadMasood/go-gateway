@@ -9,7 +9,7 @@ import (
 )
 
 type Loader interface {
-	Load() Config
+	Load() (Config, error)
 }
 
 type ReqPath string
@@ -170,27 +170,27 @@ type ConfigLoader struct {
 	path string
 }
 
-func (cl *ConfigLoader) Load() Config {
+func (cl *ConfigLoader) Load() (Config, error) {
 
 	f, err := os.ReadFile(cl.path)
 	if err != nil {
-		panic(err)
+		return Config{}, err
 	}
 
 	var config Config
 	err = json.Unmarshal(f, &config)
 	if err != nil {
-		panic(err)
+		return Config{}, err
 	}
 
 	v := validator.New()
 
 	err = v.Struct(config)
 	if err != nil {
-		panic(err)
+		return Config{}, err
 	}
 
-	return config
+	return config, nil
 
 }
 

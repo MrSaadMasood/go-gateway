@@ -1,3 +1,10 @@
+The week meant to teach about the start up behaviour of the application. What guarantees should exist for the application to start successfully. What happens if those guarnatees arent there. Are there are side effects that would be performed by the application. In short you should try to document and prove the behaviour of your system through tests.
+
+Rehydration:
+Rehydration in the context of this application means, any state that's needed for the correct functioning of the application should be loaded in the application on startup.
+This for now includes loading the config
+An extention of this also includes connecting to the database, for storing the request and service traffic data and logs.
+
 Startup Sequence:
 1- the gateway registers signals that indicate the process is going to be terminated or killed, like the sigint and sigterm signals
 2- the config is loaded next. the failure of which resutls in panic
@@ -17,5 +24,5 @@ ii-Configuration:
 3- Without a config file the gateway would not start.
 
 iii- Failure Guarantees:
-1- In case of connection failure or connection loss at any stage with the persistence store, the gateway would continue on working and keep on serving requests, but the requests metadata wont be stored anywhere and the error messages would be logged to the std out  
+1- In case of connection failure or connection loss at later stages; other than startup; with the persistence store, the gateway would continue on working and keep on serving requests, but the requests metadata wont be stored anywhere and the error messages would be logged to the std out. Reading the logs wont also work on such cases
 2- If loading the confiugration fails, due to any reason, the gateway would not start and consequently no requests would be served.
