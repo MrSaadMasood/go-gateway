@@ -62,7 +62,8 @@ func TestReqRateLimiter(t *testing.T) {
 					ServiceUrl:       "/test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    &rateLimitOpts,
-					RedirectOpts:     nil,
+					RoutingOpts:      nil,
+					ReqProxyOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						DeprecationOpts: nil,
@@ -114,7 +115,8 @@ func TestReqRateLimiter(t *testing.T) {
 					ServiceUrl:       "/test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    &rateLimitOpts,
-					RedirectOpts:     nil,
+					RoutingOpts:      nil,
+					ReqProxyOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						DeprecationOpts: nil,
@@ -168,7 +170,8 @@ func TestReqRateLimiter(t *testing.T) {
 					ServiceUrl:       "/test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    &rateLimitOpts,
-					RedirectOpts:     nil,
+					RoutingOpts:      nil,
+					ReqProxyOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						DeprecationOpts: nil,
@@ -218,7 +221,8 @@ func TestReqRateLimiter(t *testing.T) {
 					ServiceUrl:       "/test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    &rateLimitOpts,
-					RedirectOpts:     nil,
+					RoutingOpts:      nil,
+					ReqProxyOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						DeprecationOpts: nil,

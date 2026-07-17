@@ -10,6 +10,7 @@ import (
 	"gateway/internal/proxy"
 	ratelimit "gateway/internal/rate-limit"
 	"gateway/internal/request"
+	"gateway/internal/route"
 	"gateway/internal/services"
 	"gateway/internal/store"
 	"gateway/internal/telemeter"
@@ -49,6 +50,7 @@ func main() {
 	var proxier proxy.Proxier = proxy.ReqProxy{}
 	var rateLimiter ratelimit.RateLimiter = ratelimit.NewReqRateLimiter(ctx, c.RateLimitPerMinute, scm)
 	var requestTelemeter telemeter.Recorder = telemeter.NewReqTelemeter(scm)
+	var router route.Router = route.NewReqRouter()
 	corsPolicy := cors.New(cors.Options{
 		AllowedOrigins: append([]string{}, c.AllowedOrigins...),
 	})
@@ -61,6 +63,7 @@ func main() {
 		RateLimiter: rateLimiter,
 		Proxier:     proxier,
 		Telemter:    requestTelemeter,
+		Router:      router,
 		GetService: func(scs []config.ServiceConfig) services.Storer {
 			return services.NewMockServiceStore(scs)
 		},

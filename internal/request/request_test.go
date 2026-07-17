@@ -32,7 +32,8 @@ func TestGetHandler(t *testing.T) {
 		RestrictedHeaders: nil,
 		AllowedHeaders:    nil,
 	}
-	redirectOpts := config.ServiceRedirectOpts{RouteLevelRedirection: nil, ProxyReqTimeoutInSeconds: &timeout}
+	routingOpts := config.ServiceReqRoutingOpts{ReqRoutingConfigMap: nil}
+	proxyOpts := config.ServiceReqProxyOpts{ProxyReqTimeoutInSeconds: &timeout}
 	deprecationOpts := config.ServiceDepricationOpts{
 		DeprecatedUrls:    nil,
 		DeprecatedHeaders: nil,
@@ -48,7 +49,8 @@ func TestGetHandler(t *testing.T) {
 		ServiceName:      "test-service",
 		TimeoutInSeconds: &timeout,
 		RateLimitOpts:    &rateLimitOpts,
-		RedirectOpts:     &redirectOpts,
+		RoutingOpts:      &routingOpts,
+		ReqProxyOpts:     &proxyOpts,
 		AuthOpts: config.ServcieAuthOpts{
 			ValidatorOpts:   &validatorOpts,
 			PolicyOpts:      &policyOpts,
@@ -105,7 +107,7 @@ func TestGetHandler(t *testing.T) {
 				testData.Mrl.On("Limit", configService.ServiceName, r.URL.Path, remoteAddr).Return(nil)
 				testData.Mp.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool {
 					return true
-				}), r.Method, &body, r.Header, r.URL, &redirectOpts).Return(resp, nil)
+				}), r.Method, &body, r.Header, r.URL, &proxyOpts).Return(resp, nil)
 
 				req := r.WithContext(common.WithLogData(r.Context(), log.NewLogData(r)))
 				ctx, cancel := context.WithTimeout(req.Context(), 1*time.Minute)
@@ -147,7 +149,7 @@ func TestGetHandler(t *testing.T) {
 				testData.Mrl.On("Limit", configService.ServiceName, r.URL.Path, remoteAddr).Return(nil).Run(addCall(5))
 				testData.Mp.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool {
 					return true
-				}), r.Method, &body, r.Header, r.URL, &redirectOpts).Return(resp, nil).Run(addCall(6))
+				}), r.Method, &body, r.Header, r.URL, &proxyOpts).Return(resp, nil).Run(addCall(6))
 
 				req := r.WithContext(common.WithLogData(r.Context(), log.NewLogData(r)))
 				testData.Handler.ServeHTTP(w, req)
@@ -173,7 +175,7 @@ func TestGetHandler(t *testing.T) {
 				testData.Mv.On("ValidateReqSize", 0).Return(nil)
 				testData.Mrl.On("Limit", configService.ServiceName, r.URL.Path, remoteAddr).Return(nil)
 
-				testData.Mp.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool { return true }), r.Method, r.Body, r.Header, r.URL, &redirectOpts).Return(resp, nil)
+				testData.Mp.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool { return true }), r.Method, r.Body, r.Header, r.URL, &proxyOpts).Return(resp, nil)
 
 				req := r.WithContext(common.WithLogData(r.Context(), log.NewLogData(r)))
 				testData.Handler.ServeHTTP(w, req)
@@ -203,7 +205,7 @@ func TestGetHandler(t *testing.T) {
 						time.Sleep(2 * time.Second)
 					})
 
-				testData.Mp.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool { return true }), r.Method, &body, r.Header, r.URL, &redirectOpts).Return(resp, nil)
+				testData.Mp.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool { return true }), r.Method, &body, r.Header, r.URL, &proxyOpts).Return(resp, nil)
 
 				assert.NoError(t, err)
 
@@ -236,7 +238,7 @@ func TestGetHandler(t *testing.T) {
 
 				testData.Mp.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool {
 					return true
-				}), r.Method, &body, r.Header, r.URL, &redirectOpts).Return(http.Response{}, context.DeadlineExceeded)
+				}), r.Method, &body, r.Header, r.URL, &proxyOpts).Return(http.Response{}, context.DeadlineExceeded)
 
 				req := r.WithContext(common.WithLogData(r.Context(), log.NewLogData(r)))
 				ctx, cancel := context.WithTimeout(req.Context(), 1*time.Minute)

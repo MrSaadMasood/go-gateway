@@ -62,10 +62,25 @@ type ServiceValidatorOpts struct {
 	AllowedHeaders []string `json:"allowed_headers" validate:"omitempty,dive,required"`
 }
 
-type ServiceRedirectOpts struct {
-	// redirect the request from a particular paths to other paths
-	RouteLevelRedirection map[ReqPath]redirectPath `json:"route_level_redirection" validate:"omitempty,dive,required"`
+type RouteConfig struct {
+	Headers      []string `json:"headers" validate:"omitempty,dive,required"`
+	HeaderRegex  string   `json:"headers_regex"`
+	Host         string   `json:"host"`
+	HostRegex    string   `json:"host_regex"`
+	Method       string   `json:"method"`
+	Path         string   `json:"path"`
+	PathRegex    string   `json:"path_regex"`
+	Query        string   `json:"query"`
+	QueryRegex   string   `json:"query_regex"`
+	ClientIp     string   `json:"client_ip"`
+	RedirectPath string   `json:"redirect_path" validate:"required,min=1"`
+}
 
+type ServiceReqRoutingOpts struct {
+	ReqRoutingConfigMap map[ReqPath]RouteConfig
+}
+
+type ServiceReqProxyOpts struct {
 	// timeout for the request is being proxied
 	ProxyReqTimeoutInSeconds *float64 `json:"proxy_req_timeout_sec"`
 }
@@ -108,16 +123,17 @@ type ServiceConfig struct {
 	// service level request timeout
 	TimeoutInSeconds *float64 `json:"timeout_sec"`
 
-	RateLimitOpts *ServiceRateLimitOpts `json:"rate_limit_opts" validate:"omitempty"`
-	RedirectOpts  *ServiceRedirectOpts  `json:"redirect_opts" validate:"omitempty"`
-	AuthOpts      ServcieAuthOpts       `json:"auth_opts" validate:"omitempty,required"`
+	RateLimitOpts *ServiceRateLimitOpts  `json:"rate_limit_opts" validate:"omitempty"`
+	RoutingOpts   *ServiceReqRoutingOpts `json:"redirect_opts" validate:"omitempty"`
+	ReqProxyOpts  *ServiceReqProxyOpts   `json:"proxy_opts" validate:"omitempty"`
+	AuthOpts      ServcieAuthOpts        `json:"auth_opts" validate:"omitempty,required"`
 }
 
 func (sc *ServiceConfig) GetProxyTimeout(globalTimeout time.Duration) time.Duration {
 
 	var timeout time.Duration
-	if sc.RedirectOpts != nil && sc.RedirectOpts.ProxyReqTimeoutInSeconds != nil {
-		timeout = time.Duration(*sc.RedirectOpts.ProxyReqTimeoutInSeconds)
+	if sc.RoutingOpts != nil && sc.ReqProxyOpts.ProxyReqTimeoutInSeconds != nil {
+		timeout = time.Duration(*sc.ReqProxyOpts.ProxyReqTimeoutInSeconds)
 	} else if sc.TimeoutInSeconds != nil {
 		timeout = time.Duration(*sc.TimeoutInSeconds)
 	} else {

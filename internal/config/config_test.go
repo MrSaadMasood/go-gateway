@@ -77,9 +77,12 @@ func TestConfig(t *testing.T) {
 			name: "should test core service redirect options",
 			t: func(t *testing.T) {
 
-				ro := ServiceRedirectOpts{
-					RouteLevelRedirection:    nil,
+				ro := ServiceReqProxyOpts{
 					ProxyReqTimeoutInSeconds: nil,
+				}
+
+				rro := ServiceReqRoutingOpts{
+					ReqRoutingConfigMap: nil,
 				}
 
 				err := v.Struct(ro)
@@ -87,12 +90,14 @@ func TestConfig(t *testing.T) {
 
 				timeout := 1.0
 				ro.ProxyReqTimeoutInSeconds = &timeout
-				ro.RouteLevelRedirection = make(map[ReqPath]redirectPath)
+				rro.ReqRoutingConfigMap = make(map[ReqPath]RouteConfig)
 
 				err = v.Struct(ro)
 				assert.NoError(t, err)
 
-				ro.RouteLevelRedirection["endpoint"] = "redirected"
+				rro.ReqRoutingConfigMap["endpoint"] = RouteConfig{
+					RedirectPath: "redirected",
+				}
 
 				err = v.Struct(ro)
 				assert.NoError(t, err)

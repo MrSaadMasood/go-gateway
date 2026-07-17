@@ -9,6 +9,7 @@ import (
 	"gateway/internal/log"
 	"gateway/internal/proxy"
 	ratelimit "gateway/internal/rate-limit"
+	"gateway/internal/route"
 	"gateway/internal/services"
 	"gateway/internal/telemeter"
 	"gateway/internal/validate"
@@ -22,6 +23,7 @@ type HandleRequestData struct {
 	Config      config.Config
 	Validator   validate.Validator
 	Proxier     proxy.Proxier
+	Router      route.Router
 	RateLimiter ratelimit.RateLimiter
 	Telemter    telemeter.Recorder
 	GetService  services.GetServiceFunc
@@ -34,6 +36,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 
 	mapServiceToReqSuccess := func(config.Config) ActionFunc {
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
+
 			service, err := storer.Map(r.URL.Path)
 			if err != nil {
 				return nil, err
@@ -56,7 +59,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 		}
 	}
 
-	validateReqSuccess := func(c config.Config) ActionFunc {
+	validateReqSuccess := func(config.Config) ActionFunc {
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
 
 			service, err := common.MappedServiceFrom(r.Context())
@@ -132,7 +135,12 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 				return nil, err
 			}
 
-			res, err := hrd.Proxier.Proxy(timeoutCtx, r.Method, &body, r.Header, r.URL, service.RedirectOpts)
+			router, err := hrd.Router.Route(r, service.RoutingOpts)
+			if err != nil {
+				return nil, err
+			}
+
+			res, err := hrd.Proxier.Proxy(timeoutCtx, r.Method, &body, r.Header, r.URL, service.ReqProxyOpts)
 			if err != nil {
 				return nil, err
 			}

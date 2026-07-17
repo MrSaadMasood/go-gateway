@@ -25,7 +25,8 @@ func TestGateway(t *testing.T) {
 					ServiceName:      "test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    nil,
-					RedirectOpts:     nil,
+					RoutingOpts:      nil,
+					ReqProxyOpts:     nil,
 					AuthOpts: config.ServcieAuthOpts{
 						ValidatorOpts:   nil,
 						PolicyOpts:      nil,

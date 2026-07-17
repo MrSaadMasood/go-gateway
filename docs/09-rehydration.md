@@ -1,4 +1,4 @@
-The week meant to teach about the start up behaviour of the application. What guarantees should exist for the application to start successfully. What happens if those guarnatees arent there. Are there are side effects that would be performed by the application. In short you should try to document and prove the behaviour of your system through tests.
+The week meant to teach about the start up behaviour of the application and also in terms of system contracts. What guarantees should exist for the application to start successfully. What happens if those guarnatees arent there. Are there are side effects that would be performed by the application. In short you should try to document and prove the behaviour of your system through tests.
 
 Rehydration:
 Rehydration in the context of this application means, any state that's needed for the correct functioning of the application should be loaded in the application on startup.
