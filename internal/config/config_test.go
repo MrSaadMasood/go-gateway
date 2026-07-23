@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
@@ -266,6 +267,74 @@ func TestConfig(t *testing.T) {
 				btpo.SkipBearerTokenCheckPaths = []string{"path-1"}
 				err = v.Struct(btpo)
 				assert.NoError(t, err)
+			},
+		},
+		{
+			name: "should test route config options",
+			t: func(t *testing.T) {
+
+				routeConfig := RouteConfig{
+					Headers: map[string]string{
+						"Content-Type": "text/xml",
+					},
+				}
+				err := v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.RedirectPath = "/redirected"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.HeaderRegex = map[string]string{
+					"Content-Type": "",
+				}
+				err = v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.HeaderRegex["Content-Type"] = "xml$"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.Host = "test.com"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.HostRegex = "ai.com$"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.Methods = []string{""}
+				err = v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.Methods = []string{http.MethodGet}
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.Query = map[string]string{
+					"mobile": "",
+				}
+				err = v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.Query["mobile"] = "true"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.QueryRegex = map[string]string{
+					"ip": "",
+				}
+				err = v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.QueryRegex["ip"] = `\d$`
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.ClientIp = "1.1.1.1"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
 			},
 		},
 		{

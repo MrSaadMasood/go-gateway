@@ -5,6 +5,7 @@ import (
 	"gateway/internal/config"
 	"gateway/internal/log"
 	"gateway/internal/request"
+	"gateway/internal/route"
 	"gateway/internal/store"
 	"gateway/internal/telemeter"
 	"io"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 type mockStore struct{}
@@ -81,6 +83,9 @@ func TestAuditHandler(t *testing.T) {
 			t: func(t *testing.T) {
 
 				resp := http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(responseBodyText))}
+				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
+				route, err := route.NewReqRouter().Route(r, nil)
+				require.NoError(t, err)
 
 				testData := request.InitializeReqHanlderWithMocks(t, c)
 
@@ -90,9 +95,8 @@ func TestAuditHandler(t *testing.T) {
 				testData.Mrl.On("Limit", configService.ServiceName, mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(nil)
 				testData.Mp.On("Proxy", mock.MatchedBy(func(ctx context.Context) bool {
 					return true
-				}), mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(resp, nil)
+				}), route, mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(resp, nil)
 
-				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				w := httptest.NewRecorder()
 
 				handler := NewHandler(reqAuditor, recorder, testData.Handler)

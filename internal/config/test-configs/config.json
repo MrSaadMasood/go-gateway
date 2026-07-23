@@ -107,10 +107,22 @@
           "/orders": 300
         }
       },
-      "redirect_opts": {
-        "route_level_redirection": {
-          "/purchase": "/checkout"
-        },
+      "routing_opts": {
+        "req_route_config" : {
+          "/endpoint" : {
+            "headers" : {"Content-Type": "application/json"},
+            "headers_regex" : {"Content-Type": "json$"},
+            "host" : ".com",
+            "host_regex" : ".com$",
+            "methods" : ["GET"],
+            "query": {"mobile": "true"},
+            "query_regex" : {"mobile" : "true$"},
+            "client_ip" : "1.1.1.1",
+            "redirect_path" : "/redirected"
+          }
+        }
+      },
+      "proxy_opts" : {
         "proxy_req_timeout_sec": 15
       },
       "auth_opts": {

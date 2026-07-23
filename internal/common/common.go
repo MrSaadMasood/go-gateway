@@ -6,6 +6,8 @@ import (
 	"gateway/internal/config"
 	"gateway/internal/enums"
 	"gateway/internal/log"
+	"regexp"
+	"strings"
 )
 
 func WithMappedService(ctx context.Context, s config.ServiceConfig) context.Context {
@@ -42,4 +44,29 @@ func LogDataFrom(ctx context.Context) (*log.LogData, error) {
 		return nil, errors.New("no log data found")
 	}
 	return ld, nil
+}
+
+func RequestServiceExemptedPath(urlPath string) (path, version string, err error) {
+
+	splitted := strings.SplitN(urlPath, "/", 4)
+	if len(splitted) < 3 {
+		return "", "", errors.New("req path not valid")
+	}
+
+	m, err := regexp.Match(`^v\d+$`, []byte(splitted[2]))
+	if err != nil || m == false {
+		return "", "", errors.New("version verification failed")
+	}
+
+	version = splitted[2]
+	path = "/"
+	if len(splitted) == 4 {
+		path = splitted[3]
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+	}
+
+	return path, version, nil
+
 }

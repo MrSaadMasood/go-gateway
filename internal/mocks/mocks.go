@@ -34,8 +34,8 @@ func (mv *MockValidator) ValidateReqSize(bodySizeInBytes int) error {
 
 type MockProxier struct{ mock.Mock }
 
-func (mp *MockProxier) Proxy(ctx context.Context, method string, body *[]byte, h http.Header, url *url.URL, ro *config.ServiceReqProxyOpts) (http.Response, error) {
-	args := mp.Called(ctx, method, body, h, url, ro)
+func (mp *MockProxier) Proxy(ctx context.Context, route, method string, body *[]byte, h http.Header, url *url.URL, ro *config.ServiceReqProxyOpts) (http.Response, error) {
+	args := mp.Called(ctx, route, method, body, h, url, ro)
 	return args.Get(0).(http.Response), args.Error(1)
 }
 

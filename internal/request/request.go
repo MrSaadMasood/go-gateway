@@ -135,12 +135,12 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 				return nil, err
 			}
 
-			router, err := hrd.Router.Route(r, service.RoutingOpts)
+			route, err := hrd.Router.Route(r, service.RoutingOpts)
 			if err != nil {
 				return nil, err
 			}
 
-			res, err := hrd.Proxier.Proxy(timeoutCtx, r.Method, &body, r.Header, r.URL, service.ReqProxyOpts)
+			res, err := hrd.Proxier.Proxy(timeoutCtx, route, r.Method, &body, r.Header, r.URL, service.ReqProxyOpts)
 			if err != nil {
 				return nil, err
 			}

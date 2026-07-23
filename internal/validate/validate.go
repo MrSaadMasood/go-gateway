@@ -3,12 +3,12 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"gateway/internal/common"
 	"gateway/internal/config"
 	customerrors "gateway/internal/custom-errors"
 	"gateway/internal/enums"
 	"net"
 	"net/http"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -218,20 +218,9 @@ func (v reqValidator) Validate(w http.ResponseWriter, r *http.Request, serviceNa
 		return v.fail(http.StatusBadRequest, errors.New("service not supported"))
 	}
 
-	splitted := strings.SplitN(r.URL.Path, "/", 4)
-	if len(splitted) < 3 {
-		return v.fail(http.StatusBadRequest, errors.New("req path not valid "))
-	}
-
-	m, err := regexp.Match(`^v\d+$`, []byte(splitted[2]))
-	if err != nil || m == false {
-		return v.fail(http.StatusBadRequest, errors.New("version verification failed"))
-	}
-
-	reqVersion := splitted[2]
-	var path string = "/"
-	if len(splitted) == 4 {
-		path = splitted[3]
+	path, version, err := common.RequestServiceExemptedPath(r.URL.Path)
+	if err != nil {
+		return v.fail(http.StatusBadRequest, err)
 	}
 
 	err = v.validateIp(host, path, &s)
@@ -260,7 +249,7 @@ func (v reqValidator) Validate(w http.ResponseWriter, r *http.Request, serviceNa
 		return err
 	}
 
-	err = v.validateVersion(reqVersion, &s)
+	err = v.validateVersion(version, &s)
 	if err != nil {
 		return err
 	}

@@ -63,21 +63,37 @@ type ServiceValidatorOpts struct {
 }
 
 type RouteConfig struct {
-	Headers      []string `json:"headers" validate:"omitempty,dive,required"`
-	HeaderRegex  string   `json:"headers_regex"`
-	Host         string   `json:"host"`
-	HostRegex    string   `json:"host_regex"`
-	Method       string   `json:"method"`
-	Path         string   `json:"path"`
-	PathRegex    string   `json:"path_regex"`
-	Query        string   `json:"query"`
-	QueryRegex   string   `json:"query_regex"`
-	ClientIp     string   `json:"client_ip"`
-	RedirectPath string   `json:"redirect_path" validate:"required,min=1"`
+
+	// request is redirected if any of the req headers matches the value of the provided headers
+	Headers map[string]string `json:"headers" validate:"omitempty,dive,keys,required,endkeys,required"`
+
+	// request is redirected if any of the req headers passes the provided header regex value
+	HeaderRegex map[string]string `json:"headers_regex" validate:"omitempty,dive,keys,required,endkeys,required"`
+
+	// request is redirected if any of the req host contains the provided host value
+	Host string `json:"host" validate:"omitempty,required,min=1"`
+
+	// request is redirected if any of the req host passes the provided host regex
+	HostRegex string `json:"host_regex" validate:"omitempty,required"`
+
+	// request is redirected if request is sent with the provided methods
+	Methods []string `json:"methods" validate:"omitempty,dive,required"`
+
+	// request is redirected if query params of the request matched the provided query parameters
+	Query map[string]string `json:"query" validate:"omitempty,dive,keys,required,endkeys,required"`
+
+	// request is redirected if query params of the request passes the provided query parameters
+	QueryRegex map[string]string `json:"query_regex" validate:"omitempty,dive,keys,required,endkeys,required"`
+
+	// request is redirect if the client ip matched the provided ip
+	ClientIp string `json:"client_ip" validate:"omitempty,required"`
+
+	// path where the request would be routed to
+	RedirectPath string `json:"redirect_path" validate:"required,min=1"`
 }
 
 type ServiceReqRoutingOpts struct {
-	ReqRoutingConfigMap map[ReqPath]RouteConfig
+	ReqRoutingConfigMap map[ReqPath]RouteConfig `json:"req_route_config" validate:"omitempty,dive,keys,required,endkeys,required"`
 }
 
 type ServiceReqProxyOpts struct {

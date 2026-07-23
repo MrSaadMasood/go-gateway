@@ -5,6 +5,7 @@ import (
 	"gateway/internal/mocks"
 	"gateway/internal/proxy"
 	ratelimit "gateway/internal/rate-limit"
+	"gateway/internal/route"
 	"gateway/internal/services"
 	"gateway/internal/telemeter"
 	"gateway/internal/validate"
@@ -43,6 +44,7 @@ func InitializeReqHanlderWithMocks(t *testing.T, cfg config.Config) struct {
 	var getServiceFunc services.GetServiceFunc = func(scs []config.ServiceConfig) services.Storer {
 		return mockServcieStorer
 	}
+	var router route.Router = route.NewReqRouter()
 
 	c, err := configLoader.Load()
 	assert.NoError(t, err)
@@ -54,6 +56,7 @@ func InitializeReqHanlderWithMocks(t *testing.T, cfg config.Config) struct {
 		RateLimiter: rateLimiter,
 		GetService:  getServiceFunc,
 		Telemter:    mockRecorder,
+		Router:      router,
 	}
 
 	handler, err := NewHandler(hrd)

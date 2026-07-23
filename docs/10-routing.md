@@ -24,9 +24,16 @@ Invariants:
 
 Requirements:
 1- The request should be evaluated based on various things including the path, headers, query parameters etc. For complete details you can read the configuration documentation.
-2- Everything that is not involved in determining where the request should be routed based on the configuration options is ignored. Including headers, query, path etc
+2- Everything that is not involved in determining where the request should be routed based on the configuration options is ignored.
 3- Once a request passes the routing criteria, is evaluated, its routing to the target route defined in the config for that route criteria.
 4- When no rules apply, we simply forward the request to the default target uri after ommiting the service uri from the path. it would be left to the service to handle it.
 
 Non Requirements:
 1- Router should not be reponsible for proxying the request. It would only evalute the request based on the config and various parameters and provide find uri the request should be proxied to.
+
+Operational Docs:
+1- The request is evaluated based on various options and if it based for any of the provided options, the request is redirected. For the extact options, check out the configuration docs
+
+Router Behaviour:
+1- The router operates on routing based on the first match wins. Conflicts are less likely to occur since the matching sequence is hard coded
+2- Router is deterministic
