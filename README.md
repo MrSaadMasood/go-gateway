@@ -6,6 +6,76 @@ Requests are matched to a backend by `service_name` in the path, then forwarded 
 
 ---
 
+## How it works
+
+Every request moves through an explicit lifecycle. Progress is modeled as a **state machine**: only valid transitions are allowed, and failures are first-class states (not ad-hoc early returns). That makes the pipeline easy to reason about and straightforward to audit end-to-end.
+
+### Request pipeline
+
+```text
+  Client
+    │
+    ▼
+┌──────────┐   ┌──────────┐   ┌────────────┐   ┌─────────┐   ┌─────────┐
+│   Map    │──▶│ Validate │──▶│ Rate limit │──▶│  Route  │──▶│  Proxy  │
+│ service  │   │  policy  │   │            │   │         │   │upstream │
+└──────────┘   └──────────┘   └────────────┘   └─────────┘   └────┬────┘
+                                                                  │
+                                                                  ▼
+                                                              Response
+```
+
+| Stage | What it does |
+|-------|----------------|
+| **Map** | Resolve which configured backend the path belongs to |
+| **Validate** | Apply edge policy (IPs, origins, headers, bearer presence, deprecation/version rules) |
+| **Rate limit** | Enforce global / service / route limits |
+| **Route** | Optionally rewrite the path from config-driven match rules |
+| **Proxy** | Forward to the upstream and return the response |
+
+Timeouts can fire while a request is in flight. Stage failures and timeouts are recorded so you can see *where* the request stopped.
+
+### Request state machine
+
+Happy path moves left → right. Each stage can fail; those failures converge on a terminal **Failed** state. **Timeout** can occur from any in-flight stage.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Initialized
+
+    Initialized --> Mapped: map ok
+    Initialized --> MapFailed: map failed
+
+    Mapped --> Validated: validate ok
+    Mapped --> ValidationFailed: validate failed
+
+    Validated --> RateLimited: limit ok
+    Validated --> RateLimitFailed: limit exceeded
+
+    RateLimited --> Proxied: proxy ok
+    RateLimited --> ProxyFailed: proxy failed
+
+    Proxied --> Success: respond
+    Success --> [*]
+
+    MapFailed --> Failed
+    ValidationFailed --> Failed
+    RateLimitFailed --> Failed
+    ProxyFailed --> Failed
+    Failed --> [*]
+
+    Initialized --> TimedOut: timeout
+    Mapped --> TimedOut: timeout
+    Validated --> TimedOut: timeout
+    RateLimited --> TimedOut: timeout
+    Proxied --> TimedOut: timeout
+    TimedOut --> [*]
+```
+
+In short: the gateway does not only forward HTTP — it advances each request through a constrained set of states so illegal progress is hard and outcomes stay visible.
+
+---
+
 ## Prerequisites
 
 - [Go](https://go.dev/dl/) **1.25+**
