@@ -1,0 +1,263 @@
+package ratelimit
+
+import (
+	"context"
+	"gateway/internal/config"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestTockenBucket(t *testing.T) {
+	tt := []struct {
+		name string
+		t    func(t *testing.T)
+	}{
+		{
+			name: " should test the token bucket refill, refill cancellation and token consumption ",
+			t: func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				tb := newTokenbucket(ctx, 2, 1, 100*time.Millisecond, cancel)
+				time := time.After(1 * time.Second)
+				<-time
+				cancel()
+				count := 0
+				for tb.getToken() != nil {
+					count++
+				}
+
+				assert.Equal(t, tb.capacity, count)
+			},
+		},
+	}
+
+	for _, test := range tt {
+		t.Run(test.name, test.t)
+	}
+}
+
+func TestReqRateLimiter(t *testing.T) {
+
+	ip1 := "0.0.0.0:3000"
+	ip2 := "1.1.1.1:3000"
+
+	tt := []struct {
+		name string
+		t    func(t *testing.T)
+	}{
+
+		{
+			name: " should rate limit properly at global level ",
+			t: func(t *testing.T) {
+
+				rateLimitOpts := config.ServiceRateLimitOpts{
+					RateLimitPerMinute:            nil,
+					RouteLevelRateLimitsPerMinute: nil,
+				}
+
+				testService1 := config.ServiceConfig{
+					ServiceName:      "test-service",
+					ServiceUrl:       "https://test-service.com",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    &rateLimitOpts,
+					RoutingOpts:      nil,
+					ReqProxyOpts:     nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
+				}
+
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
+				}
+				globalRl := 100.0
+				cap, _, _, _ := calculateBucketData(globalRl)
+				path := "/test-service/v1"
+
+				ctx, cancel := context.WithCancel(context.Background())
+				// immediately cancel the context to stop token refilling
+				cancel()
+
+				rrl := NewReqRateLimiter(ctx, globalRl, serviceConfigs)
+
+				for range cap {
+					rrl.Limit(testService1.ServiceName, path, ip1)
+				}
+
+				err := rrl.Limit(testService1.ServiceName, path, ip1)
+
+				var successfullReq int
+				var failedReq int
+
+				require.ErrorIs(t, err, globalRateLimitErr)
+
+				assert.GreaterOrEqual(t, failedReq, successfullReq)
+
+			},
+		},
+		{
+			name: "should rate limit at service level",
+			t: func(t *testing.T) {
+
+				servcieRl := 120.0
+				rateLimitOpts := config.ServiceRateLimitOpts{
+					RateLimitPerMinute:            &servcieRl,
+					RouteLevelRateLimitsPerMinute: nil,
+				}
+
+				testService1 := config.ServiceConfig{
+					ServiceName:      "test-service",
+					ServiceUrl:       "https://test-service.com",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    &rateLimitOpts,
+					RoutingOpts:      nil,
+					ReqProxyOpts:     nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
+				}
+
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
+				}
+
+				cap, _, _, _ := calculateBucketData(servcieRl)
+				path := "/test-service/v1"
+
+				ctx, cancel := context.WithCancel(context.Background())
+				// immediately cancel the context to stop token refilling
+				cancel()
+
+				rrl := NewReqRateLimiter(ctx, 1000, serviceConfigs)
+
+				for range cap {
+					rrl.Limit(testService1.ServiceName, path, ip1)
+				}
+
+				err := rrl.Limit(testService1.ServiceName, path, ip1)
+				require.ErrorIs(t, err, serviceLevelRateLimitErr)
+
+				var successfullReq int
+				var failedReq int
+
+				assert.GreaterOrEqual(t, failedReq, successfullReq)
+
+			},
+		},
+		{
+			name: "should rate limit at the route level",
+			t: func(t *testing.T) {
+
+				servcieRl := 500.0
+				routeRl := 120.0
+				rateLimitOpts := config.ServiceRateLimitOpts{
+					RateLimitPerMinute: &servcieRl,
+					RouteLevelRateLimitsPerMinute: map[string]float64{
+						"/route": routeRl,
+					},
+				}
+
+				testService1 := config.ServiceConfig{
+					ServiceName:      "test-service",
+					ServiceUrl:       "https://test-service.com",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    &rateLimitOpts,
+					RoutingOpts:      nil,
+					ReqProxyOpts:     nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
+				}
+
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
+				}
+
+				globalRl := 1000.0
+				cap, _, _, _ := calculateBucketData(routeRl)
+
+				ctx, cancel := context.WithCancel(context.Background())
+				// immediately cancel the context to stop token refilling
+				cancel()
+
+				rrl := NewReqRateLimiter(ctx, globalRl, serviceConfigs)
+				path := "/test-service/v1/route"
+
+				for range cap {
+					rrl.Limit(testService1.ServiceName, path, ip1)
+				}
+
+				err := rrl.Limit(testService1.ServiceName, path, ip1)
+				require.ErrorIs(t, err, routeLevelRateLimitErr)
+
+				var successfullReq int
+				var failedReq int
+
+				assert.GreaterOrEqual(t, failedReq, successfullReq)
+
+			},
+		},
+		{
+			name: "should ensure that req limiter treats different ips as separate entities / users",
+			t: func(t *testing.T) {
+
+				rateLimitOpts := config.ServiceRateLimitOpts{
+					RateLimitPerMinute:            nil,
+					RouteLevelRateLimitsPerMinute: nil,
+				}
+
+				testService1 := config.ServiceConfig{
+					ServiceName:      "test-service",
+					ServiceUrl:       "https://test-service.com",
+					TimeoutInSeconds: nil,
+					RateLimitOpts:    &rateLimitOpts,
+					RoutingOpts:      nil,
+					ReqProxyOpts:     nil,
+					AuthOpts: config.ServcieAuthOpts{
+						ValidatorOpts:   nil,
+						DeprecationOpts: nil,
+						PolicyOpts:      nil,
+						VersionOpts:     nil,
+					},
+				}
+
+				serviceConfigs := config.ServiceConfigMap{
+					testService1.ServiceName: testService1,
+				}
+
+				globalRl := 100.0
+				path := "/test-service/v1"
+
+				ctx, cancel := context.WithCancel(context.Background())
+				// immediately cancel the context to stop token refilling
+				cancel()
+
+				rrl := NewReqRateLimiter(ctx, globalRl, serviceConfigs)
+
+				rrl.Limit(testService1.ServiceName, path, ip1)
+				rrl.Limit(testService1.ServiceName, path, ip2)
+
+				tBucket1 := rrl.getIpTBucket(ip1)
+				tBucket2 := rrl.getIpTBucket(ip2)
+
+				assert.NotEqual(t, tBucket1, tBucket2, "the buckets should be different for each ip")
+			},
+		},
+	}
+
+	for _, test := range tt {
+		t.Run(test.name, test.t)
+	}
+
+}

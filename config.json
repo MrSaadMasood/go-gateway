@@ -1,0 +1,88 @@
+{
+  "port": 8080,
+  "global_timeout_sec": 30,
+  "rate_limit_per_min": 1000,
+  "req_size_in_bytes": 10485760,
+  "blocked_ips": [
+    "192.168.1.100",
+    "10.0.0.5"
+  ],
+  "allowed_origins": [
+    "https://example.com",
+    "https://admin.example.com"
+  ],
+  "health_interval_sec": 30,
+  "services": [
+    {
+      "service_name": "json-placeholder",
+      "service_url": "https://jsonplaceholder.typicode.com/",
+      "timeout_sec": 20,
+      "rate_limit_opts": {
+        "rate_limit_per_min": 500,
+        "route_level_limit_per_min": {
+          "/posts": 50,
+          "/comments": 300
+        }
+      },
+      "routing_opts": {
+        "req_route_config" : {
+          "/posts/v1" : {
+            "headers" : {"Content-Type": "application/json"},
+            "headers_regex" : {"Content-Type": "json$"},
+            "host" : ".com",
+            "host_regex" : ".com$",
+            "methods" : ["GET"],
+            "query": {"mobile": "true"},
+            "query_regex" : {"mobile" : "true$"},
+            "client_ip" : "1.1.1.1",
+            "redirect_path" : "/posts"
+          }
+        }
+      },
+      "proxy_opts" : {
+        "proxy_req_timeout_sec": 15
+      },
+      "auth_opts": {
+        "validator_opts": {
+          "required_headers": [
+            "Authorization"
+          ],
+          "restricted_headers": ["restricted"],
+          "allowed_headers": [
+            "Authorization",
+            "Content-Type",
+            "Accept"
+          ]
+        },
+        "deprecation_opts": {
+          "deprecated_urls": ["deprecated-url"],
+          "deprecated_headers": ["deprecated-header"],
+          "obsolete_urls": ["obsolete-url"]
+        },
+        "policy_opts": {
+          "blocked_ip_opts": {
+            "blocked_ips": ["ip"],
+            "route_level_blocked_ips": {
+            }
+          },
+          "req_origin_opts": {
+            "allowed_origins": [
+            ]
+          },
+          "bearer_token_policy_opts": {
+            "should_verify_bearer_token": true,
+            "skip_bearer_token_check_path": [
+              "/comments"
+            ]
+          }
+        },
+        "version_opts": {
+          "available_versions": [
+            "v1"
+          ],
+          "default_version": "v1"
+        }
+      }
+    }
+  ]
+}

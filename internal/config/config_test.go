@@ -1,0 +1,362 @@
+package config
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestConfig(t *testing.T) {
+	v := validator.New()
+
+	testTables := []struct {
+		name string
+		t    func(t *testing.T)
+	}{
+		{
+			name: "should validate the config",
+			t: func(t *testing.T) {
+				c := Config{
+					Port:                         5000,
+					GlobalTimeoutInSeconds:       10,
+					RateLimitPerMinute:           10,
+					ReqSizeLimitInBytes:          100,
+					BlockedIps:                   []string{},
+					AllowedOrigins:               []string{},
+					HealthCheckIntervalInSeconds: 2,
+					Services:                     []ServiceConfig{{ServiceName: "test-service", ServiceUrl: "https://test-service.com", AuthOpts: ServcieAuthOpts{}, TimeoutInSeconds: nil, RateLimitOpts: nil}},
+				}
+
+				err := v.Struct(c)
+				assert.NoError(t, err)
+
+			},
+		},
+		{
+			name: "should validate core service config",
+			t: func(t *testing.T) {
+				sc := ServiceConfig{
+					ServiceName: "test-service", ServiceUrl: "https://test-service.com", AuthOpts: ServcieAuthOpts{}, TimeoutInSeconds: nil, RateLimitOpts: nil}
+
+				err := v.Struct(sc)
+				assert.NoError(t, err)
+
+				timeout := 1.0
+				sc.TimeoutInSeconds = &timeout
+
+				err = v.Struct(sc)
+				assert.NoError(t, err)
+			},
+		},
+		{
+			name: "should test core service rate limit options",
+			t: func(t *testing.T) {
+				rlo := ServiceRateLimitOpts{
+					RateLimitPerMinute:            nil,
+					RouteLevelRateLimitsPerMinute: nil,
+				}
+
+				err := v.Struct(rlo)
+				assert.NoError(t, err)
+
+				rateLimit := 1.0
+				rlo.RateLimitPerMinute = &rateLimit
+				rlo.RouteLevelRateLimitsPerMinute = make(map[string]float64)
+
+				err = v.Struct(rlo)
+				assert.NoError(t, err)
+
+				rlo.RouteLevelRateLimitsPerMinute["endpoint"] = 12
+				err = v.Struct(rlo)
+				assert.NoError(t, err)
+
+			},
+		},
+		{
+			name: "should test core service redirect options",
+			t: func(t *testing.T) {
+
+				ro := ServiceReqProxyOpts{
+					ProxyReqTimeoutInSeconds: nil,
+				}
+
+				rro := ServiceReqRoutingOpts{
+					ReqRoutingConfigMap: nil,
+				}
+
+				err := v.Struct(ro)
+				assert.NoError(t, err)
+
+				timeout := 1.0
+				ro.ProxyReqTimeoutInSeconds = &timeout
+				rro.ReqRoutingConfigMap = make(map[ReqPath]RouteConfig)
+
+				err = v.Struct(ro)
+				assert.NoError(t, err)
+
+				rro.ReqRoutingConfigMap["endpoint"] = RouteConfig{
+					RedirectPath: "redirected",
+				}
+
+				err = v.Struct(ro)
+				assert.NoError(t, err)
+			},
+		},
+		{
+			name: "should test core service validator options",
+			t: func(t *testing.T) {
+				vo := ServiceValidatorOpts{
+					RequiredHeaders:   nil,
+					RestrictedHeaders: nil,
+					AllowedHeaders:    nil,
+				}
+
+				err := v.Struct(vo)
+				assert.NoError(t, err)
+
+				vo.RequiredHeaders = []string{""}
+				err = v.Struct(vo)
+				assert.Error(t, err)
+
+				vo.RequiredHeaders = []string{"string"}
+
+				err = v.Struct(vo)
+				assert.NoError(t, err)
+
+				vo.AllowedHeaders = []string{""}
+				vo.RestrictedHeaders = []string{""}
+				err = v.Struct(vo)
+				assert.Error(t, err)
+
+				vo.AllowedHeaders = []string{"header-2"}
+				vo.RestrictedHeaders = []string{"header-3"}
+				err = v.Struct(vo)
+				assert.NoError(t, err)
+
+			},
+		},
+
+		{
+			name: "should test core service deprecation options",
+			t: func(t *testing.T) {
+				do := ServiceDepricationOpts{
+					DeprecatedUrls:    nil,
+					DeprecatedHeaders: nil,
+					ObsoleteUrls:      nil,
+				}
+
+				err := v.Struct(do)
+				assert.NoError(t, err)
+
+				do.DeprecatedUrls = []ReqPath{""}
+				err = v.Struct(do)
+				assert.Error(t, err)
+
+				do.DeprecatedUrls = []ReqPath{"string"}
+
+				err = v.Struct(do)
+				assert.NoError(t, err)
+
+				do.DeprecatedHeaders = []string{""}
+				do.ObsoleteUrls = []ReqPath{""}
+				err = v.Struct(do)
+				assert.Error(t, err)
+
+				do.DeprecatedHeaders = []string{"header-2"}
+				do.ObsoleteUrls = []ReqPath{"header-3"}
+				err = v.Struct(do)
+				assert.NoError(t, err)
+
+			},
+		},
+		{
+			name: "should test core service version options",
+			t: func(t *testing.T) {
+				vo := ServiceVersionOpts{
+					AvialableVersions: nil,
+					DefaultVersion:    "",
+				}
+
+				err := v.Struct(vo)
+				assert.NoError(t, err)
+
+				vo.AvialableVersions = []string{""}
+				err = v.Struct(vo)
+				assert.Error(t, err)
+
+				vo.AvialableVersions = []string{"v1"}
+				err = v.Struct(vo)
+				assert.NoError(t, err)
+
+			},
+		},
+		{
+			name: "should validate core service policy options",
+			t: func(t *testing.T) {
+				po := ServicePolicyOpts{}
+				err := v.Struct(po)
+				assert.NoError(t, err)
+			},
+		},
+		{
+			name: "should validate core service blocked ips options",
+			t: func(t *testing.T) {
+				bio := ServiceBlockedIpsOpts{BlockedIps: nil, RouteLevelBlockedIps: nil}
+
+				err := v.Struct(bio)
+				assert.NoError(t, err)
+
+				bio.BlockedIps = []string{""}
+				err = v.Struct(bio)
+				assert.Error(t, err)
+
+				bio.BlockedIps = []string{"ip"}
+				err = v.Struct(bio)
+				assert.NoError(t, err)
+
+				bio.RouteLevelBlockedIps = map[string][]string{}
+				err = v.Struct(bio)
+				assert.NoError(t, err)
+
+				bio.RouteLevelBlockedIps["route"] = []string{""}
+				err = v.Struct(bio)
+				assert.Error(t, err)
+
+				bio.RouteLevelBlockedIps["route"] = []string{"ip"}
+				err = v.Struct(bio)
+				assert.NoError(t, err)
+			},
+		},
+		{
+			name: "shoudl test core req origin options",
+			t: func(t *testing.T) {
+				roo := ServiceReqOriginOpts{
+					AllowedOrigins: nil,
+				}
+
+				err := v.Struct(roo)
+				assert.NoError(t, err)
+
+				roo.AllowedOrigins = []string{""}
+				err = v.Struct(roo)
+				assert.Error(t, err)
+
+				roo.AllowedOrigins = []string{"origin"}
+				err = v.Struct(roo)
+				assert.NoError(t, err)
+
+			},
+		},
+		{
+			name: "should test core bearer token policy options",
+			t: func(t *testing.T) {
+				btpo := ServiceBearerTokenPolicyOpts{
+					ShouldVerifyBearerToken:   false,
+					SkipBearerTokenCheckPaths: nil,
+				}
+
+				err := v.Struct(btpo)
+				assert.NoError(t, err)
+
+				btpo.SkipBearerTokenCheckPaths = []string{""}
+				err = v.Struct(btpo)
+				assert.Error(t, err)
+
+				btpo.SkipBearerTokenCheckPaths = []string{"path-1"}
+				err = v.Struct(btpo)
+				assert.NoError(t, err)
+			},
+		},
+		{
+			name: "should test route config options",
+			t: func(t *testing.T) {
+
+				routeConfig := RouteConfig{
+					Headers: map[string]string{
+						"Content-Type": "text/xml",
+					},
+				}
+				err := v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.RedirectPath = "/redirected"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.HeaderRegex = map[string]string{
+					"Content-Type": "",
+				}
+				err = v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.HeaderRegex["Content-Type"] = "xml$"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.Host = "test.com"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.HostRegex = "ai.com$"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.Methods = []string{""}
+				err = v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.Methods = []string{http.MethodGet}
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.Query = map[string]string{
+					"mobile": "",
+				}
+				err = v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.Query["mobile"] = "true"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.QueryRegex = map[string]string{
+					"ip": "",
+				}
+				err = v.Struct(routeConfig)
+				assert.Error(t, err)
+
+				routeConfig.QueryRegex["ip"] = `\d$`
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+				routeConfig.ClientIp = "1.1.1.1"
+				err = v.Struct(routeConfig)
+				assert.NoError(t, err)
+
+			},
+		},
+		{
+			name: "should return error if the config file is not present at the give address",
+			t: func(t *testing.T) {
+				c := NewConfigLoader("./test-configs/fake-config.json")
+				_, err := c.Load()
+				assert.Error(t, err)
+			},
+		},
+		{
+			name: "should successfully load config the file if the config file is present at the given address",
+			t: func(t *testing.T) {
+				c := NewConfigLoader("./test-configs/config.json")
+				_, err := c.Load()
+				assert.NoError(t, err)
+
+			},
+		},
+	}
+
+	for _, test := range testTables {
+		t.Run(test.name, test.t)
+	}
+}
