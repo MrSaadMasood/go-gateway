@@ -19,7 +19,7 @@ type LogReqData struct {
 	ReqPayload string
 	ReqHeaders http.Header
 	ReqPath    string
-	ReqStatus  enums.RequestStatus
+	ReqStatus  []enums.RequestStatus
 }
 
 type LogResData struct {
@@ -74,6 +74,7 @@ func NewLogData(r *http.Request) *LogData {
 				ReqMethod:  r.Method,
 				ReqHeaders: r.Header,
 				ReqPath:    r.URL.Path,
+				ReqStatus:  make([]enums.RequestStatus, 0),
 			},
 		},
 	}
@@ -94,13 +95,13 @@ func (ld *LogData) SetReqPayload(p *[]byte) {
 	ld.Data.LogReqData.ReqPayload = string(*p)
 }
 
-func (ld *LogData) SetFinalReqStatus(s enums.RequestStatus) {
+func (ld *LogData) AppendRequestStatus(s enums.RequestStatus) {
 	if ld.Data.LogReqData == nil {
 		logger.Println("Failed to set req payload for auditor the log data: ", ld.Data)
 		return
 	}
 
-	ld.Data.LogReqData.ReqStatus = s
+	ld.Data.LogReqData.ReqStatus = append(ld.Data.LogReqData.ReqStatus, s)
 
 }
 

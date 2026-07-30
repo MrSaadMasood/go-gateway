@@ -16,7 +16,7 @@ type ServicesStore struct {
 
 type GetServiceFunc func(scs []config.ServiceConfig) Storer
 
-func NewMockServiceStore(scs []config.ServiceConfig) ServicesStore {
+func NewServiceStore(scs []config.ServiceConfig) ServicesStore {
 	return ServicesStore{
 		serviceConfigs: scs,
 	}

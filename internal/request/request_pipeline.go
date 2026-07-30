@@ -80,7 +80,7 @@ func NewReqStateMachine(kam reqTransitionKeyActionMap) reqStateMachine {
 					enums.ReqProxyFailed,
 					enums.ReqTimeout,
 				},
-				to: enums.ReqSuccess,
+				to: enums.ReqFailed,
 			},
 			enums.ReqTimeoutEvent: {
 				fromStatus: []enums.RequestStatus{
@@ -181,6 +181,13 @@ func (m *reqStateMachine) fire(w http.ResponseWriter, r *http.Request, successEv
 		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, failureState, err)
 	}
 
+	ld, err := common.LogDataFrom(r.Context())
+	if err != nil {
+		return nil, customerrors.NewReqFailedErr(http.StatusBadRequest, failureState, err)
+	}
+
+	ld.AppendRequestStatus(sf.to)
+
 	return m.updateRequestStatus(req, sf.to), nil
 }
 
@@ -224,7 +231,7 @@ func sendError(err error, w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			ld.SetFailure(fd)
-			ld.SetFinalReqStatus(reqStatus)
+			ld.AppendRequestStatus(reqStatus)
 		}()
 
 		ok := errors.As(err, &reqFailer)
@@ -233,11 +240,10 @@ func sendError(err error, w http.ResponseWriter, r *http.Request) {
 			fd.Reason = reqFailer.Error()
 			reqStatus = reqFailer.Status()
 
-			http.Error(w, fmt.Sprintf("req failed with status: %s and error: %s", reqFailer.Status(), reqFailer.Error()), reqFailer.Code())
+			http.Error(w, fmt.Sprintf("req failed with status: %s and error: %s and code %d", reqFailer.Status(), reqFailer.Error(), reqFailer.Code()), reqFailer.Code())
 			return
 		}
 
-		fmt.Println("the error is", err.Error())
 		http.Error(w, fmt.Sprint("Internal Server Error: ", err.Error()), http.StatusInternalServerError)
 		return
 	}

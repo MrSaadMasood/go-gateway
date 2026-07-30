@@ -4,9 +4,10 @@ import (
 	"context"
 	"gateway/internal/common"
 	"gateway/internal/log"
+	glog "gateway/internal/log"
 	"gateway/internal/store"
 	"gateway/internal/telemeter"
-	logger "log"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -25,10 +26,11 @@ type reqAuditor struct {
 	reqAuditDataMap map[string]*auditData
 	storage         store.Storer
 	flushDuration   time.Duration
+	logger          glog.Logger
 }
 
-func NewReqAuditor(ctx context.Context, storage store.Storer) *reqAuditor {
-	ra := reqAuditor{ctx, make(map[string]*auditData), storage, 5 * time.Minute}
+func NewReqAuditor(ctx context.Context, storage store.Storer, logger glog.Logger) *reqAuditor {
+	ra := reqAuditor{ctx, make(map[string]*auditData), storage, 5 * time.Minute, logger}
 	return &ra
 }
 
@@ -42,7 +44,14 @@ func (ra *reqAuditor) log() {
 	}
 	err := ra.storage.StoreLogs(logs)
 	if err != nil {
-		logger.Println("Error occured while storing the request logs:", err.Error())
+		ra.logger.Log(slog.LevelError, "AUDITOR", slog.String("error", err.Error()))
+		ra.logToStdout(&logs)
+	}
+}
+
+func (ra *reqAuditor) logToStdout(logs *[]log.LogData) {
+	for _, l := range *logs {
+		ra.logger.Log(slog.LevelInfo, "AUDITOR", slog.Any("req_log", l))
 	}
 }
 
@@ -64,6 +73,11 @@ func (ra *reqAuditor) flushLogsPeriodically() {
 		case <-t.C:
 			ra.log()
 		case <-ra.ctx.Done():
+			logs := make([]log.LogData, len(ra.reqAuditDataMap))
+			for _, auditData := range ra.reqAuditDataMap {
+				logs = append(logs, *auditData.logData)
+			}
+			ra.logToStdout(&logs)
 			t.Stop()
 			return
 		}

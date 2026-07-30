@@ -140,7 +140,8 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 				return nil, err
 			}
 
-			res, err := hrd.Proxier.Proxy(timeoutCtx, route, r.Method, &body, r.Header, r.URL, service.ReqProxyOpts)
+			targetEndpoint := service.ServiceUrl + route
+			res, err := hrd.Proxier.Proxy(timeoutCtx, targetEndpoint, r.Method, &body, r.Header, service.GetProxyTimeout(c.GetGlobalTimeout()))
 			if err != nil {
 				return nil, err
 			}
@@ -152,7 +153,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 		}
 	}
 
-	var sendResponse = func(reqStatus enums.RequestStatus) ActionFunc {
+	var sendResponse = func(enums.RequestStatus) ActionFunc {
 		return func(w http.ResponseWriter, r *http.Request) (*http.Request, error) {
 			res, err := ProxyResFrom(r.Context())
 			if err != nil {
@@ -182,7 +183,6 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 				ResHeaders: w.Header(),
 				ResTime:    time.Until(t).Seconds(),
 			})
-			ld.SetFinalReqStatus(reqStatus)
 
 			w.WriteHeader(res.StatusCode)
 			w.Write(body)
@@ -247,7 +247,7 @@ func NewHandler(hrd HandleRequestData) (http.Handler, error) {
 					sendError(err, w, r)
 					return
 				}
-				ctx, cancel := context.WithTimeout(r.Context(), service.GetProxyTimeout(time.Duration(c.GlobalTimeoutInSeconds)))
+				ctx, cancel := context.WithTimeout(r.Context(), service.GetProxyTimeout(c.GetGlobalTimeout()))
 				defer cancel()
 				h.ServeHTTP(w, r.WithContext(ctx))
 			})

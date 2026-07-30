@@ -14,98 +14,32 @@
   "health_interval_sec": 30,
   "services": [
     {
-      "service_name": "users",
-      "service_url": "http://localhost:9001",
-      "timeout_sec": 15,
-      "rate_limit_opts": {
-        "rate_limit_per_min": 300,
-        "route_level_limit_per_min": {
-          "/login": 50,
-          "/register": 20,
-          "/profile": 200
-        }
-      },
-      "redirect_opts": {
-        "route_level_redirection": {
-          "/old-login": "/login",
-          "/old-profile": "/profile"
-        },
-        "proxy_req_timeout_sec": 10
-      },
-      "auth_opts": {
-        "validator_opts": {
-          "required_headers": [
-            "Authorization",
-            "X-Request-ID"
-          ],
-          "restricted_headers": [
-            "X-Internal-Secret"
-          ],
-          "allowed_headers": [
-            "Authorization",
-            "Content-Type",
-            "Accept",
-            "X-Request-ID"
-          ]
-        },
-        "deprecation_opts": {
-          "deprecated_urls": [
-            "/v1/login",
-            "/v1/profile"
-          ],
-          "deprecated_headers": [
-            "X-API-Key"
-          ],
-          "obsolete_urls": [
-            "/v0/login"
-          ]
-        },
-        "policy_opts": {
-          "blocked_ip_opts": {
-            "blocked_ips": [
-              "172.16.1.100"
-            ],
-            "route_level_blocked_ips": {} 
-          },
-          "req_origin_opts": {
-            "allowed_origins": [
-              "https://app.example.com",
-              "https://admin.example.com"
-            ]
-          },
-          "bearer_token_policy_opts": {
-            "should_verify_bearer_token": true,
-            "skip_bearer_token_check_path": [
-              "/login",
-              "/register",
-              "/health"
-            ]
-          }
-        },
-        "version_opts": {
-          "available_versions": [
-            "v1",
-            "v2"
-          ],
-          "default_version": "v2"
-        }
-      }
-    },
-    {
-      "service_name": "orders",
-      "service_url": "http://localhost:9002",
+      "service_name": "json-placeholder",
+      "service_url": "https://jsonplaceholder.typicode.com/",
       "timeout_sec": 20,
       "rate_limit_opts": {
         "rate_limit_per_min": 500,
         "route_level_limit_per_min": {
-          "/checkout": 50,
-          "/orders": 300
+          "/posts": 50,
+          "/comments": 300
         }
       },
-      "redirect_opts": {
-        "route_level_redirection": {
-          "/purchase": "/checkout"
-        },
+      "routing_opts": {
+        "req_route_config" : {
+          "/posts/v1" : {
+            "headers" : {"Content-Type": "application/json"},
+            "headers_regex" : {"Content-Type": "json$"},
+            "host" : ".com",
+            "host_regex" : ".com$",
+            "methods" : ["GET"],
+            "query": {"mobile": "true"},
+            "query_regex" : {"mobile" : "true$"},
+            "client_ip" : "1.1.1.1",
+            "redirect_path" : "/posts"
+          }
+        }
+      },
+      "proxy_opts" : {
         "proxy_req_timeout_sec": 15
       },
       "auth_opts": {
@@ -113,7 +47,7 @@
           "required_headers": [
             "Authorization"
           ],
-          "restricted_headers": [],
+          "restricted_headers": ["restricted"],
           "allowed_headers": [
             "Authorization",
             "Content-Type",
@@ -121,24 +55,24 @@
           ]
         },
         "deprecation_opts": {
-          "deprecated_urls": [],
-          "deprecated_headers": [],
-          "obsolete_urls": []
+          "deprecated_urls": ["deprecated-url"],
+          "deprecated_headers": ["deprecated-header"],
+          "obsolete_urls": ["obsolete-url"]
         },
         "policy_opts": {
           "blocked_ip_opts": {
-            "blocked_ips": [],
-            "route_level_blocked_ips":{} 
+            "blocked_ips": ["ip"],
+            "route_level_blocked_ips": {
+            }
           },
           "req_origin_opts": {
             "allowed_origins": [
-              "https://shop.example.com"
             ]
           },
           "bearer_token_policy_opts": {
             "should_verify_bearer_token": true,
             "skip_bearer_token_check_path": [
-              "/health"
+              "/comments"
             ]
           }
         },

@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"context"
 	"errors"
+	"gateway/internal/common"
 	"gateway/internal/config"
 	customerrors "gateway/internal/custom-errors"
 	"gateway/internal/enums"
@@ -104,7 +105,7 @@ func (rrl *reqRateLimiter) Limit(serviceName, path, ip string) error {
 
 	b, err := rrl.getBuckets(ip, serviceName, path)
 	if err != nil {
-		return err
+		return customErr(err)
 	}
 
 	if b == nil {
@@ -120,7 +121,11 @@ func (rrl *reqRateLimiter) Limit(serviceName, path, ip string) error {
 		return customErr(serviceLevelRateLimitErr)
 	}
 
-	if sb.consumeUrlToken(path) == nil {
+	reqPath, _, err := common.RequestServiceExemptedPath(path)
+	if err != nil {
+		return customErr(err)
+	}
+	if sb.consumeUrlToken(reqPath) == nil {
 		return customErr(routeLevelRateLimitErr)
 	}
 

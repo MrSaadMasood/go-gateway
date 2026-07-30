@@ -21,6 +21,8 @@ func (mc *mockConfig) Load() (config.Config, error) {
 
 func TestValidate(t *testing.T) {
 
+	gatewayEndpoint := "https://gateway/test-service"
+
 	tt := []struct {
 		name string
 		t    func(t *testing.T)
@@ -32,7 +34,7 @@ func TestValidate(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    nil,
 					RoutingOpts:      nil,
@@ -49,7 +51,7 @@ func TestValidate(t *testing.T) {
 					testService1.ServiceName: testService1,
 				}
 
-				endpoint := testService1.ServiceUrl + "/v1"
+				endpoint := gatewayEndpoint + "/v1"
 
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
@@ -74,7 +76,7 @@ func TestValidate(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    nil,
 					RoutingOpts:      nil,
@@ -93,7 +95,7 @@ func TestValidate(t *testing.T) {
 
 				unRegisteredServcie := "not-registered-service"
 				inValidEndpoint := "/" + unRegisteredServcie + "/v1"
-				validEndpoint := testService1.ServiceUrl + "/v1"
+				validEndpoint := gatewayEndpoint + "/v1"
 
 				r := httptest.NewRequest(http.MethodGet, inValidEndpoint, http.NoBody)
 				defer r.Body.Close()
@@ -122,7 +124,7 @@ func TestValidate(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    nil,
 					RoutingOpts:      nil,
@@ -146,7 +148,7 @@ func TestValidate(t *testing.T) {
 					testService1.ServiceName: testService1,
 				}
 
-				endpoint := testService1.ServiceUrl + "/v1"
+				endpoint := gatewayEndpoint + "/v1"
 
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
@@ -179,7 +181,7 @@ func TestValidate(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    nil,
 					RoutingOpts:      nil,
@@ -201,7 +203,7 @@ func TestValidate(t *testing.T) {
 					testService1.ServiceName: testService1,
 				}
 
-				endpoint := testService1.ServiceUrl + "/v1"
+				endpoint := gatewayEndpoint + "/v1"
 
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
@@ -240,7 +242,7 @@ func TestValidate(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    nil,
 					RoutingOpts:      nil,
@@ -259,7 +261,7 @@ func TestValidate(t *testing.T) {
 					testService1.ServiceName: testService1,
 				}
 
-				endpoint := testService1.ServiceUrl + "/v1"
+				endpoint := gatewayEndpoint + "/v1"
 
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
@@ -273,12 +275,12 @@ func TestValidate(t *testing.T) {
 				err = v.Validate(w, r, testService1.ServiceName)
 				assert.NoError(t, err)
 
-				r.URL.Path = testService1.ServiceUrl + "/v1/default"
+				r.URL.Path = "/" + testService1.ServiceName + "/v1/default"
 				err = v.Validate(w, r, testService1.ServiceName)
 				assert.NoError(t, err)
 
 				testService1.AuthOpts.PolicyOpts.ServiceBearerTokenPolicyOpts.ShouldVerifyBearerToken = false
-				r.URL.Path = testService1.ServiceUrl + "/v1/new"
+				r.URL.Path = "/" + testService1.ServiceName + "/v1/new"
 				err = v.Validate(w, r, testService1.ServiceName)
 				assert.NoError(t, err)
 
@@ -291,7 +293,7 @@ func TestValidate(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    nil,
 					RoutingOpts:      nil,
@@ -309,7 +311,7 @@ func TestValidate(t *testing.T) {
 					testService1.ServiceName: testService1,
 				}
 
-				endpoint := testService1.ServiceUrl + "/v1/deprecated-1"
+				endpoint := gatewayEndpoint + "/v1/deprecated-1"
 
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
@@ -326,7 +328,7 @@ func TestValidate(t *testing.T) {
 				assert.Greater(t, len(deprecatedResHeader), 0, "the deprecation header should not be nil")
 				assert.Greater(t, len(warningResHeader), 0, "the deprecation header should not be nil")
 
-				r.URL.Path = testService1.ServiceUrl + "/v1/obsolete-1"
+				r.URL.Path = testService1.ServiceName + "/v1/obsolete-1"
 				err = v.Validate(w, r, testService1.ServiceName)
 				assert.Error(t, err)
 
@@ -339,7 +341,7 @@ func TestValidate(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    nil,
 					RoutingOpts:      nil,
@@ -358,7 +360,7 @@ func TestValidate(t *testing.T) {
 					testService1.ServiceName: testService1,
 				}
 
-				endpoint := testService1.ServiceUrl + "/v1"
+				endpoint := gatewayEndpoint + "/v1"
 
 				r := httptest.NewRequest(http.MethodGet, endpoint, http.NoBody)
 				defer r.Body.Close()
@@ -368,7 +370,7 @@ func TestValidate(t *testing.T) {
 				err := v.Validate(w, r, testService1.ServiceName)
 				assert.NoError(t, err)
 
-				r.URL.Path = testService1.ServiceUrl + "/v3"
+				r.URL.Path = testService1.ServiceName + "/v3"
 				err = v.Validate(w, r, testService1.ServiceName)
 				assert.Error(t, err)
 

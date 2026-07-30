@@ -160,8 +160,8 @@ func (stb *serviceTB) consumeUrlToken(path string) *token {
 
 	utb, shouldLimit := stb.urlTokenBucketMap[path]
 
-	if !shouldLimit || utb == nil {
-		return nil
+	if !shouldLimit {
+		return &token{}
 	}
 
 	return utb.getToken()

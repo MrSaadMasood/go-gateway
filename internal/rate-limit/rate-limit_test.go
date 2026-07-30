@@ -59,7 +59,7 @@ func TestReqRateLimiter(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service.com",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    &rateLimitOpts,
 					RoutingOpts:      nil,
@@ -77,7 +77,7 @@ func TestReqRateLimiter(t *testing.T) {
 				}
 				globalRl := 100.0
 				cap, _, _, _ := calculateBucketData(globalRl)
-				endpoint := "/test-service/v1"
+				path := "/test-service/v1"
 
 				ctx, cancel := context.WithCancel(context.Background())
 				// immediately cancel the context to stop token refilling
@@ -86,10 +86,10 @@ func TestReqRateLimiter(t *testing.T) {
 				rrl := NewReqRateLimiter(ctx, globalRl, serviceConfigs)
 
 				for range cap {
-					rrl.Limit(testService1.ServiceName, endpoint, ip1)
+					rrl.Limit(testService1.ServiceName, path, ip1)
 				}
 
-				err := rrl.Limit(testService1.ServiceName, endpoint, ip1)
+				err := rrl.Limit(testService1.ServiceName, path, ip1)
 
 				var successfullReq int
 				var failedReq int
@@ -112,7 +112,7 @@ func TestReqRateLimiter(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service.com",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    &rateLimitOpts,
 					RoutingOpts:      nil,
@@ -130,7 +130,7 @@ func TestReqRateLimiter(t *testing.T) {
 				}
 
 				cap, _, _, _ := calculateBucketData(servcieRl)
-				endpoint := "/test-service/v1"
+				path := "/test-service/v1"
 
 				ctx, cancel := context.WithCancel(context.Background())
 				// immediately cancel the context to stop token refilling
@@ -139,10 +139,10 @@ func TestReqRateLimiter(t *testing.T) {
 				rrl := NewReqRateLimiter(ctx, 1000, serviceConfigs)
 
 				for range cap {
-					rrl.Limit(testService1.ServiceName, endpoint, ip1)
+					rrl.Limit(testService1.ServiceName, path, ip1)
 				}
 
-				err := rrl.Limit(testService1.ServiceName, endpoint, ip1)
+				err := rrl.Limit(testService1.ServiceName, path, ip1)
 				require.ErrorIs(t, err, serviceLevelRateLimitErr)
 
 				var successfullReq int
@@ -161,13 +161,13 @@ func TestReqRateLimiter(t *testing.T) {
 				rateLimitOpts := config.ServiceRateLimitOpts{
 					RateLimitPerMinute: &servcieRl,
 					RouteLevelRateLimitsPerMinute: map[string]float64{
-						"/v1": routeRl,
+						"/route": routeRl,
 					},
 				}
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service.com",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    &rateLimitOpts,
 					RoutingOpts:      nil,
@@ -192,12 +192,13 @@ func TestReqRateLimiter(t *testing.T) {
 				cancel()
 
 				rrl := NewReqRateLimiter(ctx, globalRl, serviceConfigs)
+				path := "/test-service/v1/route"
 
 				for range cap {
-					rrl.Limit(testService1.ServiceName, "/v1", ip1)
+					rrl.Limit(testService1.ServiceName, path, ip1)
 				}
 
-				err := rrl.Limit(testService1.ServiceName, "/v1", ip1)
+				err := rrl.Limit(testService1.ServiceName, path, ip1)
 				require.ErrorIs(t, err, routeLevelRateLimitErr)
 
 				var successfullReq int
@@ -218,7 +219,7 @@ func TestReqRateLimiter(t *testing.T) {
 
 				testService1 := config.ServiceConfig{
 					ServiceName:      "test-service",
-					ServiceUrl:       "/test-service",
+					ServiceUrl:       "https://test-service.com",
 					TimeoutInSeconds: nil,
 					RateLimitOpts:    &rateLimitOpts,
 					RoutingOpts:      nil,
@@ -236,7 +237,7 @@ func TestReqRateLimiter(t *testing.T) {
 				}
 
 				globalRl := 100.0
-				endpoint := "/test-service/v1"
+				path := "/test-service/v1"
 
 				ctx, cancel := context.WithCancel(context.Background())
 				// immediately cancel the context to stop token refilling
@@ -244,8 +245,8 @@ func TestReqRateLimiter(t *testing.T) {
 
 				rrl := NewReqRateLimiter(ctx, globalRl, serviceConfigs)
 
-				rrl.Limit(testService1.ServiceName, endpoint, ip1)
-				rrl.Limit(testService1.ServiceName, endpoint, ip2)
+				rrl.Limit(testService1.ServiceName, path, ip1)
+				rrl.Limit(testService1.ServiceName, path, ip2)
 
 				tBucket1 := rrl.getIpTBucket(ip1)
 				tBucket2 := rrl.getIpTBucket(ip2)

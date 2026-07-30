@@ -7,6 +7,7 @@ import (
 	"gateway/internal/auditor"
 	"gateway/internal/config"
 	"gateway/internal/gateway"
+	glog "gateway/internal/log"
 	"gateway/internal/proxy"
 	ratelimit "gateway/internal/rate-limit"
 	"gateway/internal/request"
@@ -15,7 +16,7 @@ import (
 	"gateway/internal/store"
 	"gateway/internal/telemeter"
 	"gateway/internal/validate"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -24,10 +25,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 )
 
 func main() {
+
 	args := os.Args
 	fmt.Print(args[1])
 	if len(args) > 0 && args[1] == "read" {
@@ -35,19 +38,25 @@ func main() {
 		return
 	}
 
+	err := godotenv.Load()
+	if err != nil {
+		panic(err)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	var configLoader config.Loader = config.NewConfigLoader("./config.json")
 	storage := store.NewStorage(ctx)
+	var logger glog.Logger = glog.New(ctx)
 	var storer store.Storer = storage
 
-	g := gateway.NewGateway(ctx, configLoader, storage)
+	g := gateway.New(ctx, configLoader, storage, logger)
 	c := g.Start()
-
 	scm := c.GetServiceConfigMap()
+
 	var validator validate.Validator = validate.NewReqValidator(c.BlockedIps, c.AllowedOrigins, c.ReqSizeLimitInBytes, scm)
-	var proxier proxy.Proxier = proxy.ReqProxy{}
+	var proxier proxy.Proxier = proxy.NewReqProxy(c.GetGlobalTimeout())
 	var rateLimiter ratelimit.RateLimiter = ratelimit.NewReqRateLimiter(ctx, c.RateLimitPerMinute, scm)
 	var requestTelemeter telemeter.Recorder = telemeter.NewReqTelemeter(scm)
 	var router route.Router = route.NewReqRouter()
@@ -55,7 +64,7 @@ func main() {
 		AllowedOrigins: append([]string{}, c.AllowedOrigins...),
 	})
 
-	reqAuditor := auditor.NewReqAuditor(ctx, storer)
+	reqAuditor := auditor.NewReqAuditor(ctx, storer, logger)
 
 	handler, err := request.NewHandler(request.HandleRequestData{
 		Config:      c,
@@ -65,7 +74,7 @@ func main() {
 		Telemter:    requestTelemeter,
 		Router:      router,
 		GetService: func(scs []config.ServiceConfig) services.Storer {
-			return services.NewMockServiceStore(scs)
+			return services.NewServiceStore(scs)
 		},
 	})
 
@@ -77,13 +86,13 @@ func main() {
 	handler = auditor.NewHandler(reqAuditor, requestTelemeter, handler)
 
 	mux := http.NewServeMux()
-	mux.Handle("GET /", handler)
+	mux.Handle("/", handler)
 	mux.Handle("GET /logs", storer.ReadLogsHandler())
 
 	server := &http.Server{
-		ReadHeaderTimeout: time.Duration(c.GlobalTimeoutInSeconds),
-		ReadTimeout:       time.Duration(c.GlobalTimeoutInSeconds),
-		WriteTimeout:      time.Duration(c.GlobalTimeoutInSeconds),
+		ReadHeaderTimeout: time.Duration(c.GetGlobalTimeout()),
+		ReadTimeout:       time.Duration(c.GetGlobalTimeout()),
+		WriteTimeout:      time.Duration(c.GetGlobalTimeout()),
 		Handler:           mux,
 		BaseContext: func(l net.Listener) context.Context {
 			return ctx
@@ -92,9 +101,9 @@ func main() {
 
 	go func() {
 		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("failed to close the server: %s", err.Error())
+			logger.Log(slog.LevelError, "SERVER_ERROR", slog.String("error", err.Error()))
 		}
-		log.Fatalf("stopped server new connections")
+		logger.Log(slog.LevelError, "SERVER_STOPPED", slog.String("message", "server closed, stopped accepting new connections"))
 	}()
 
 	<-ctx.Done()
@@ -103,7 +112,7 @@ func main() {
 	defer cancel()
 
 	if err = server.Shutdown(ctx); !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("failed to shutdown the server: %s", err.Error())
+		logger.Log(slog.LevelError, "SERVER_ERROR", slog.String("error", err.Error()))
 	}
 }
 

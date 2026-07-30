@@ -1,5 +1,9 @@
 package env
 
+import (
+	"os"
+)
+
 func GetDbConnString() string {
-	return ""
+	return os.Getenv("DATABASE_URL")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"gateway/internal/config"
+	"gateway/internal/log"
 	"gateway/internal/mocks"
 	"testing"
 
@@ -48,8 +49,11 @@ func TestGateway(t *testing.T) {
 					HealthCheckIntervalInSeconds: int64(globalTimeout),
 				}
 
+				ctx := context.Background()
+
 				ms := new(mocks.MockStore)
 				mcl := new(mocks.MockConfigLoader)
+				var logger log.Logger = log.New(ctx)
 
 				callOrder := make([]int, 0)
 				addCall := func(i int) func(args mock.Arguments) {
@@ -61,8 +65,7 @@ func TestGateway(t *testing.T) {
 				ms.On("Initialize").Return(nil).Run(addCall(1))
 				mcl.On("Load").Return(c, nil).Run(addCall(2))
 
-				ctx := context.Background()
-				g := NewGateway(ctx, mcl, ms)
+				g := New(ctx, mcl, ms, logger)
 				assert.NotPanics(t, func() {
 					g.Start()
 				})
@@ -80,7 +83,8 @@ func TestGateway(t *testing.T) {
 				mcl.On("Load").Return(config.Config{}, errors.New("failed to load config"))
 
 				ctx := context.Background()
-				g := NewGateway(ctx, mcl, ms)
+				var logger log.Logger = log.New(ctx)
+				g := New(ctx, mcl, ms, logger)
 				assert.Panics(t, func() {
 					g.Start()
 				})

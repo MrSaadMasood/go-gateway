@@ -149,9 +149,9 @@ func (sc *ServiceConfig) GetProxyTimeout(globalTimeout time.Duration) time.Durat
 
 	var timeout time.Duration
 	if sc.RoutingOpts != nil && sc.ReqProxyOpts.ProxyReqTimeoutInSeconds != nil {
-		timeout = time.Duration(*sc.ReqProxyOpts.ProxyReqTimeoutInSeconds)
+		timeout = time.Duration(*sc.ReqProxyOpts.ProxyReqTimeoutInSeconds * float64(time.Second))
 	} else if sc.TimeoutInSeconds != nil {
-		timeout = time.Duration(*sc.TimeoutInSeconds)
+		timeout = time.Duration(*sc.TimeoutInSeconds * float64(time.Second))
 	} else {
 		timeout = globalTimeout
 	}
@@ -186,6 +186,10 @@ type Config struct {
 
 	// interval after which gateway would check the health of the services
 	HealthCheckIntervalInSeconds int64 `json:"health_interval_sec" validate:"required"`
+}
+
+func (c *Config) GetGlobalTimeout() time.Duration {
+	return time.Duration(c.GlobalTimeoutInSeconds * float64(time.Second))
 }
 
 func (c *Config) GetServiceConfigMap() ServiceConfigMap {

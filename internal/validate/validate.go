@@ -41,7 +41,7 @@ func (wrw *wrappedResponseWriter) Write(b []byte) (int, error) {
 }
 
 func (wrw *wrappedResponseWriter) Header() http.Header {
-	return wrw.Header()
+	return wrw.ResponseWriter.Header()
 }
 
 func (wrw *wrappedResponseWriter) WriteHeader(statusCode int) {
