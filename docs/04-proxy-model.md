@@ -1,7 +1,5 @@
-You should always reason about system integrity.
-You should design system, so its nearly impossible to break them or leave them in an inconsistent / invalid state.
-You should argue about what in the system prevents it from breaking.
-You should recognize when order is an implementation detail and when order is a behaviour
+# Proxy model
 
-if the system has to do some processing with multiple steps and states, the states should determine the flow and execution steps, preferrably through a state machine.
-Make execution structure explicit, enforceable, and hard to misuse
+System integrity is a primary design constraint. The gateway is structured so invalid or inconsistent states are difficult to reach, and each guard that prevents breakage is intentional and reviewable.
+
+Order is treated carefully: when sequence is behavior (not an implementation detail), it is made explicit. Multi-step request handling is driven by states — preferably a state machine — so execution structure is enforceable and hard to misuse.

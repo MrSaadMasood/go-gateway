@@ -1,28 +1,33 @@
-The week meant to teach about the start up behaviour of the application and also in terms of system contracts. What guarantees should exist for the application to start successfully. What happens if those guarnatees arent there. Are there are side effects that would be performed by the application. In short you should try to document and prove the behaviour of your system through tests.
+# Startup and rehydration
 
-Rehydration:
-Rehydration in the context of this application means, any state that's needed for the correct functioning of the application should be loaded in the application on startup.
-This for now includes loading the config
-An extention of this also includes connecting to the database, for storing the request and service traffic data and logs.
+Startup behavior is part of the system contract: what must be true for the process to start, what happens when it is not, and which side effects run before traffic is accepted. Behavior is documented here and covered by tests where practical.
 
-Startup Sequence:
-1- the gateway registers signals that indicate the process is going to be terminated or killed, like the sigint and sigterm signals
-2- the config is loaded next. the failure of which resutls in panic
-3- all the components of the system that are dependent on the config are created
-4- connection to the perisitence layer is made. the failure of while results in panic
-5- the system then registers the endpoints and starts the server finally.
+## Rehydration
 
-Startup Invariants:
+Rehydration loads any state required for correct operation before serving requests. Today that includes configuration and a connection to the database used for request logs and traffic data.
 
-i- Rehydration Guarantees:
-1- in case of system restart anything the system has in momory that is not persisted, would be lost e.g it includes the req traffic per server and per servcie route. The information wont be restored.
-2- every system restart causing the config to be loaded and injected into the system. Any changes in the config would be reflected in the gateway.
+## Startup sequence
 
-ii-Configuration:
-1- the configuration is loaded from the config.json file on root of the project.
-2- Any errors in the configuration file would result in gateway to throw an error and shutdown immediately. The gateway would not serve any requests in case of misconfigured configuration file. The error would be logged to the std out
-3- Without a config file the gateway would not start.
+1. Register termination signals (`SIGINT`, `SIGTERM`).  
+2. Load config — failure panics; the process does not start.  
+3. Construct components that depend on config.  
+4. Connect to the persistence layer — failure panics.  
+5. Register HTTP handlers and start the server.  
 
-iii- Failure Guarantees:
-1- In case of connection failure or connection loss at later stages; other than startup; with the persistence store, the gateway would continue on working and keep on serving requests, but the requests metadata wont be stored anywhere and the error messages would be logged to the std out. Reading the logs wont also work on such cases
-2- If loading the confiugration fails, due to any reason, the gateway would not start and consequently no requests would be served.
+## Startup invariants
+
+### Rehydration
+
+1. In-memory state that was never persisted is lost on restart (e.g. per-server / per-route traffic counters). It is not restored.  
+2. Every restart reloads config and injects it into the system; config changes take effect on the next start.  
+
+### Configuration
+
+1. Config is loaded from `config.json` at the project root.  
+2. Invalid config fails startup immediately; no requests are served. The error is logged to stdout.  
+3. Without a config file, the gateway does not start.  
+
+### Failure after start
+
+1. If the persistence connection fails or drops after startup, the gateway keeps serving requests. Request metadata is not stored; errors go to stdout. Log reads also fail in that case.  
+2. If configuration cannot be loaded for any reason, the gateway does not start and serves no traffic.

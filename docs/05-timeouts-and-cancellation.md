@@ -1,12 +1,12 @@
-the week is about defining execution boundaries in the system. At an abstract level:
+# Timeouts and cancellation
 
-You should reason about where the execution boundaries should be in your system.
-What kind of execution boundaries should exist in your system.
-Who controls those execution boudaries.
-What parts of the system are not bound by those boundaries.
+Execution boundaries define how long work may run and who may cancel it.
 
-What parts of the system are bound to remain within those boundaries
+Design questions answered here:
+- Where execution boundaries sit in the gateway
+- What kinds of boundaries exist (request context, proxy timeout, shutdown)
+- Who controls them (config, per-service overrides, process signals)
+- Which parts of the system are bound by them, and which are not
+- Whether boundaries are global, nested, or independent per subsystem
 
-Argue that are execution boundaries are part of the system as a whole or are there independent different boundaries or sub boundaries in the system
-
-Make sure the system aligns with the execution boundaries you set for you system.
+The implementation aligns with those boundaries: in-flight work respects context cancellation and configured timeouts rather than running unbounded.

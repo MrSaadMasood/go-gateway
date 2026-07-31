@@ -1,23 +1,28 @@
-Requirements:
+# Persistence design
 
-1- The request metadata including the req path, params, body, headers, response body, response status. In case of failures it should also record the failure reason / error and the step at which failure occured should be persisted.
-2- The metadata should survice persistence across server restarts.
-3- Any unexpected errors that might occur that can result in process crashing or req failures should be persisted. if not possible to persist should be logged to the stdout for visiblity.
-4- Any gateway internal state that is not directly involved with req response lifecycle and debugging would not be persisted.
-5- We should be able to read the already persisted logs.
-6- In case of log write failure, the gateway should log the error on the system console.
-7- In case of log read failure, it should send a proper error response
-8- the audit log should be done at the following places: When the request enter the system, When the response for the request is sent
+## Requirements
 
-Non Requirements:
-1- The gateway would not provide any fancy ui or dashboard to read and analyze the logs.
-2- The gateway should not provide any kind of metric system for analyzing the logs
-3- The gateway would not provide any guarantees when the system is forcefully spotted or brought down bypassing any gracefull shutdowns.
+1. Persist request metadata: path, params, body, headers, response body/status; on failure, also reason and the pipeline step where it failed.  
+2. Survive process restarts.  
+3. Persist unexpected errors that crash or fail requests; if persistence is impossible, write to stdout for visibility.  
+4. Do not persist gateway-internal state unrelated to the request/response lifecycle or debugging.  
+5. Support reading persisted logs.  
+6. On write failure, log the error to the console.  
+7. On read failure, return a proper error response.  
+8. Audit at request entry and when the response is sent.  
 
-Operational Docs:
-1- The audit logger does not block the request cycle for any kind of logging.
-2- The logs are collected for a period of time and flushed to the persistence store
-3- The collection of log data is split across the entire request lifecycle. This distributed data collection is done for maximum flexibility.
+## Non-requirements
 
-Invariant:
-1- The persistence store should be up and running for auditor to work properly
+1. No UI or dashboard for log analysis.  
+2. No metrics system built on top of these logs.  
+3. No durability guarantees if the process is force-killed, bypassing graceful shutdown.  
+
+## Operational notes
+
+1. Audit logging does not block the request path.  
+2. Logs are buffered and flushed to the store periodically.  
+3. Log fields are collected across the lifecycle so each stage can contribute without a single choke point.  
+
+## Invariant
+
+The persistence store must be available at startup for the auditor to initialize correctly.
