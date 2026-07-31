@@ -1,30 +1,35 @@
-Invariant:
-Only the request with allowed ip, allowed headers, with optionally configured bearer token, non-obsolete url sent at one of the available versions of the servcie passes authentication and validation
+# Authentication and validation
 
-Requirements:
-1- The gateway would block ips at the global, service and route level
-1- The gateway would block origins at the global and service level
-2- The gateway limit the size of the request body
-3- The gateway would be able to control which headers are required, restricted and which are allowed to pass
-4- The gateway can also check the protected routes for the existence of bearer token
-5- The gateway should also manage depricated, obsolete urls and headers for the service
-6- the gatway should verify if the request is being transferred to the correct available version of the service. Request to incorrect versions will not be entertained.
+## Invariant
 
-Non Requirements:
-1- The gateway would not check what's inside the bearer token. It will only check its existence for protected routes. The token decoding is not a responsiblity of the gateway and each service would hanle it according to its own business logic.
-2- The gateway should not manage any auth requirements or procedures that are service specific and would need the knowledge of the service internal data models and domain knowledge.
-3- The gateway would not block origins at route level
+Only requests with an allowed IP, allowed headers, an optional bearer token when configured, a non-obsolete URL, and a supported service version pass validation.
 
-Any req that fails the authentication, would return an error response.
-The request authentication happens as soon as the request enters the gateway and is mapped to a service
+## Requirements
 
-Operational Docs:
-1- For globally allowed origins, it would be managed by the cors policy at the global level
-2- For service allowed origins, it would be mangaged through the cors policy at the servcie level, while we are authenticating the service. The cors policy at the service level also checks for the allowed headers
-3- if any required headers are not provided, it returns an error repsonse
-4- if any restricted header is provided, it return an error repsonse
-5- for any deprecation headers and url, it just adds the Deprecation and Warning header values but forward the response
-6- it checks for the existence of bearer tokens if the option to check it is enabled, and it req path is in skipable paths for token check its skipped and the req is allowed to be processed
-7- for obsolete urls the authentication fails
-8- if the request service version is not present in the available service versions, the authentication fails
-9- the req body size is calcuated before proxying the request. if exceeded than global req size it throws an error
+1. Block IPs at global, service, and route level  
+2. Block origins at global and service level  
+3. Enforce a maximum request body size  
+4. Control required, restricted, and allowed headers  
+5. Optionally require a bearer token on protected routes  
+6. Surface deprecated / obsolete URLs and headers for a service  
+7. Reject requests targeting unsupported service versions  
+
+## Non-requirements
+
+1. The gateway does not inspect bearer token contents — only presence on protected routes. Token semantics belong to each service.  
+2. Service-specific auth that needs domain models stays out of the gateway.  
+3. Origins are not blocked at route level.  
+
+Failed validation returns an error response. Checks run after the request is mapped to a service.
+
+## Operational notes
+
+1. Global allowed origins are enforced via the global CORS policy.  
+2. Service-level origins (and allowed headers) are checked during service validation.  
+3. Missing required headers → error.  
+4. Restricted headers present → error.  
+5. Deprecated headers/URLs add `Deprecation` / `Warning` response headers and still forward.  
+6. Bearer presence is checked when enabled; configured skip paths bypass the check.  
+7. Obsolete URLs fail validation.  
+8. Unknown service versions fail validation.  
+9. Body size is checked before proxying; oversize bodies are rejected against the global limit.

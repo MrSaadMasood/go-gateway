@@ -1,39 +1,48 @@
-One should think about systems in terms of their behaviour. Implementation is secondary and should reflect those behaviours.
+# Routing
 
-Think in terms of:
-1- How should the system behave generally and under certain special conditions.
-2- Why a specific behaviour exists
-3- What things must hold true for the system to exhibit the specific defined behaviour.
-4- What assumptions are we making regarding that behaviour of the system
-5- What different sub behaviours are exhibitited.
-6- What are the criteria to exhibit those sub behaviours.
+Systems are specified by behavior first. Implementation follows those behaviors.
 
-What is routing in context of the gateway?
-Routing is redirecting a request to a target that is different from its original target based on the various configuration options and requirements.
+Design focuses on:
+1. How the system behaves in the common case and under edge conditions  
+2. Why a behavior exists  
+3. What must hold for that behavior to be valid  
+4. Assumptions behind it  
+5. Sub-behaviors and the criteria that trigger them  
 
-Why routing exists?
-Routing is done to support backward compatible api versioning in a smooth manner and to suppport the old and new clients.
-To handle obsolete and deprecated routes, without much overhead.
-To have dynamic route matching.
+## What routing means here
 
-Terminology:
-Route: Route refers to the path of the request. It does not include request url domain.
+Routing redirects a request to a different path than the one received, based on configuration match rules.
 
-Invariants:
-1- All valid requests would be routed based on the configuration.
+## Why it exists
 
-Requirements:
-1- The request should be evaluated based on various things including the path, headers, query parameters etc. For complete details you can read the configuration documentation.
-2- Everything that is not involved in determining where the request should be routed based on the configuration options is ignored.
-3- Once a request passes the routing criteria, is evaluated, its routing to the target route defined in the config for that route criteria.
-4- When no rules apply, we simply forward the request to the default target uri after ommiting the service uri from the path. it would be left to the service to handle it.
+- Smooth backward-compatible API versioning for old and new clients  
+- Handle obsolete and deprecated routes without heavy process overhead  
+- Support dynamic, config-driven path matching  
 
-Non Requirements:
-1- Router should not be reponsible for proxying the request. It would only evalute the request based on the config and various parameters and provide find uri the request should be proxied to.
+## Terminology
 
-Operational Docs:
-1- The request is evaluated based on various options and if it based for any of the provided options, the request is redirected. For the extact options, check out the configuration docs
+**Route** — the request path only (not the host/domain).
 
-Router Behaviour:
-1- The router operates on routing based on the first match wins. Conflicts are less likely to occur since the matching sequence is hard coded
-2- Router is deterministic
+## Invariant
+
+All valid requests are routed according to configuration.
+
+## Requirements
+
+1. Evaluate path, headers, query parameters, and related match fields (see config docs).  
+2. Ignore inputs that are not part of the routing decision.  
+3. On a matching rule, redirect to the configured target path.  
+4. When no rule matches, forward to the default target URI after stripping the service segment from the path; the upstream handles the rest.  
+
+## Non-requirements
+
+The router does not proxy. It only evaluates the request and returns the URI the proxy should call.
+
+## Operational notes
+
+Match options are defined in configuration. On any matching option set, the request is redirected to the configured path.
+
+## Router behavior
+
+1. First match wins. Match order is fixed in code, so conflicts are rare.  
+2. Routing is deterministic for a given request and config.

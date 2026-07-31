@@ -1,20 +1,19 @@
-When designing low level system like in this case rate limiter. We should follow the same approach that we use to design the systems at high level.
-Meaning we should start from defining the requirements, non requirements, any guarantees the system would need to provide.
-Identify the key components it would have, define the boundaries of such system. Idenfity what each component would do, what are the invariants of the sub system.
-how this system would manage the consistency, concurrency, resources, conflicts, time, lifecycle, cleanup, operational guarantees etc.
+# Rate limiting
 
-System guarantees exist in the architect docs, api contracts, interfaces, operational documentation.
-Code only enforces those guarantees.
+The rate limiter is designed with the same discipline as the rest of the gateway: requirements and non-requirements first, then components, boundaries, and invariants — including consistency, concurrency, lifecycle, cleanup, and operational guarantees.
 
-the system would rate limit the requests based on the ip address of the user.
-The rate limit is applied at 3 different levels:
-1- the global level when the request enters the system,
-2- the service level when the request enters the system,
-3- the url path level for that service
+Those guarantees live in architecture notes, API contracts, and operational docs. Code enforces them; it does not invent them.
 
-All requests that would be rate limited would fail with status code of 429.
+## Behavior
 
-The rate limit strategy used are token buckets
-The token refil rate and tokens in a bucket can be configured through the config
-Token buckets exist at above mentioned levels.
-A token is consumed at every level moving from global to route level. Any consumed token wont be reverted back, in case the of failure at lower levels
+Requests are rate-limited by client IP at three levels:
+
+1. Global — when the request enters the gateway  
+2. Service — for the mapped backend  
+3. Route — for the service path  
+
+A limited request fails with HTTP **429**.
+
+## Strategy
+
+Token buckets are used at each level above. Capacity and refill rate are config-driven. A token is consumed at every level from global down to route. Consumed tokens are not returned if a later level fails.
